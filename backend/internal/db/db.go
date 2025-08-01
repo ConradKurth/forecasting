@@ -2,12 +2,16 @@ package db
 
 import (
 	"context"
+	"database/sql"
+	"path/filepath"
 	"time"
 
 	"github.com/ConradKurth/forecasting/backend/internal/config"
 	"github.com/ConradKurth/forecasting/backend/internal/repository/users"
 	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pkg/errors"
+	"github.com/pressly/goose/v3"
 )
 
 // DB holds all repository implementations
@@ -20,6 +24,34 @@ type DB struct {
 // New creates a new database connection pool using DATABASE_URL from config
 func New() (*DB, error) {
 	return NewWithURL(config.Values.Database.URL)
+}
+
+// RunMigrations runs database migrations with out-of-order support
+func RunMigrations(databaseURL string) error {
+	// Create a standard sql.DB connection for goose
+	sqlDB, err := sql.Open("pgx", databaseURL)
+	if err != nil {
+		return errors.Wrap(err, "failed to open database for migrations")
+	}
+	defer sqlDB.Close()
+
+	// Set migration dialect
+	if err := goose.SetDialect("postgres"); err != nil {
+		return errors.Wrap(err, "failed to set goose dialect")
+	}
+
+	// Enable out-of-order migrations
+	goose.SetSequential(false)
+
+	// Get the migrations directory path
+	migrationsDir := filepath.Join("migrations")
+
+	// Run migrations
+	if err := goose.Up(sqlDB, migrationsDir); err != nil {
+		return errors.Wrap(err, "failed to run migrations")
+	}
+
+	return nil
 }
 
 // NewWithURL creates a new database connection pool with the provided URL

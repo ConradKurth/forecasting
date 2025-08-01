@@ -23,6 +23,14 @@ func main() {
 	// Initialize logger
 	logger.Init(logger.Level(config.Values.Logging.Level))
 	
+	// Run database migrations
+	logger.Info("Running database migrations...")
+	if err := db.RunMigrations(config.Values.Database.URL); err != nil {
+		logger.Error("Failed to run migrations", "error", err)
+		panic(err)
+	}
+	logger.Info("Database migrations completed successfully")
+	
 	// Initialize database
 	database, err := db.New()
 	if err != nil {
