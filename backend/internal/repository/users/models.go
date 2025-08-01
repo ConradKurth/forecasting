@@ -5,25 +5,33 @@
 package users
 
 import (
-	"github.com/ConradKurth/forecasting/backend/internal/crypto"
 	"github.com/ConradKurth/forecasting/backend/pkg/id"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type ShopifyStore struct {
-	ID          string           `json:"id"`
-	UserID      string           `json:"user_id"`
-	ShopDomain  string           `json:"shop_domain"`
-	AccessToken string           `json:"access_token"`
-	Scope       string           `json:"scope"`
-	CreatedAt   pgtype.Timestamp `json:"created_at"`
-	UpdatedAt   pgtype.Timestamp `json:"updated_at"`
+	ID         string           `json:"id"`
+	ShopDomain string           `json:"shop_domain"`
+	ShopName   pgtype.Text      `json:"shop_name"`
+	Timezone   pgtype.Text      `json:"timezone"`
+	Currency   pgtype.Text      `json:"currency"`
+	CreatedAt  pgtype.Timestamp `json:"created_at"`
+	UpdatedAt  pgtype.Timestamp `json:"updated_at"`
+}
+
+type ShopifyUser struct {
+	ID             string           `json:"id"`
+	UserID         string           `json:"user_id"`
+	ShopifyStoreID string           `json:"shopify_store_id"`
+	AccessToken    string           `json:"access_token"`
+	Scope          string           `json:"scope"`
+	ExpiresAt      pgtype.Timestamp `json:"expires_at"`
+	CreatedAt      pgtype.Timestamp `json:"created_at"`
+	UpdatedAt      pgtype.Timestamp `json:"updated_at"`
 }
 
 type User struct {
-	ID          id.ID[id.User]         `json:"id"`
-	ShopDomain  string                 `json:"shop_domain"`
-	AccessToken crypto.EncryptedSecret `json:"access_token"`
-	CreatedAt   pgtype.Timestamp       `json:"created_at"`
-	UpdatedAt   pgtype.Timestamp       `json:"updated_at"`
+	ID        id.ID[id.User]   `json:"id"`
+	CreatedAt pgtype.Timestamp `json:"created_at"`
+	UpdatedAt pgtype.Timestamp `json:"updated_at"`
 }

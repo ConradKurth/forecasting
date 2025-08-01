@@ -6,13 +6,14 @@ package users
 
 import (
 	"context"
+
+	"github.com/ConradKurth/forecasting/backend/pkg/id"
 )
 
 type Querier interface {
-	CreateOrUpdateUser(ctx context.Context, arg CreateOrUpdateUserParams) (User, error)
-	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
-	GetUserByShopDomain(ctx context.Context, shopDomain string) (User, error)
-	UpdateUserAccessToken(ctx context.Context, arg UpdateUserAccessTokenParams) (User, error)
+	CreateUser(ctx context.Context, argID id.ID[id.User]) (User, error)
+	GetUserByID(ctx context.Context, argID id.ID[id.User]) (User, error)
+	UpdateUser(ctx context.Context, argID id.ID[id.User]) (User, error)
 }
 
 var _ Querier = (*Queries)(nil)

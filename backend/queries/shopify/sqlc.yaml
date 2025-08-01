@@ -1,0 +1,37 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: 
+      - "shopify_store.sql"
+      - "shopify_users.sql"
+    schema: "../../migrations"
+    gen:
+      go:
+        package: "shopify"
+        out: "../../internal/repository/shopify"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_interface: true
+        emit_exact_table_names: false
+        emit_empty_slices: true
+        overrides:
+          - column: "shopify_users.access_token"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/internal/crypto"
+              type: "EncryptedSecret"
+          - column: "shopify_store.id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.ShopifyStore]"
+          - column: "shopify_users.id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.ShopifyUser]"
+          - column: "shopify_users.user_id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.User]"
+          - column: "shopify_users.shopify_store_id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.ShopifyStore]" 

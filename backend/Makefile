@@ -8,7 +8,12 @@ help: ## Show this help message
 # Database operations
 db-generate: ## Generate Go code from SQL using sqlc
 	@echo "Generating repository code with sqlc..."
-	@sqlc generate
+	@for dir in queries/*/; do \
+		if [ -f "$$dir/sqlc.yaml" ]; then \
+			echo "Generating from $$dir"; \
+			cd "$$dir" && sqlc generate && cd ../..; \
+		fi; \
+	done
 	@echo "✅ Repository code generated successfully"
 
 db-migrate: ## Show migration status

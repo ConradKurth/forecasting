@@ -25,3 +25,19 @@ type Product struct {
 func (p Product) Prefix() string {
 	return "prd_"
 }
+
+type ShopifyStore struct {
+	ID string
+}
+
+func (s ShopifyStore) Prefix() string {
+	return "sps_"
+}
+
+type ShopifyUser struct {
+	ID string
+}
+
+func (s ShopifyUser) Prefix() string {
+	return "spu_"
+}

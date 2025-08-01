@@ -8,104 +8,45 @@ package users
 import (
 	"context"
 
-	"github.com/ConradKurth/forecasting/backend/internal/crypto"
 	"github.com/ConradKurth/forecasting/backend/pkg/id"
 )
 
-const createOrUpdateUser = `-- name: CreateOrUpdateUser :one
-INSERT INTO users (id, shop_domain, access_token, created_at, updated_at)
-VALUES ($1, $2, $3, NOW(), NOW())
-ON CONFLICT (shop_domain)
-DO UPDATE SET
-    access_token = EXCLUDED.access_token,
-    updated_at = NOW()
-RETURNING id, shop_domain, access_token, created_at, updated_at
-`
-
-type CreateOrUpdateUserParams struct {
-	ID          id.ID[id.User]         `json:"id"`
-	ShopDomain  string                 `json:"shop_domain"`
-	AccessToken crypto.EncryptedSecret `json:"access_token"`
-}
-
-func (q *Queries) CreateOrUpdateUser(ctx context.Context, arg CreateOrUpdateUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, createOrUpdateUser, arg.ID, arg.ShopDomain, arg.AccessToken)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.ShopDomain,
-		&i.AccessToken,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (id, shop_domain, access_token, created_at, updated_at)
-VALUES ($1, $2, $3, NOW(), NOW())
-RETURNING id, shop_domain, access_token, created_at, updated_at
+INSERT INTO users (id, created_at, updated_at)
+VALUES ($1, NOW(), NOW())
+RETURNING id, created_at, updated_at
 `
 
-type CreateUserParams struct {
-	ID          id.ID[id.User]         `json:"id"`
-	ShopDomain  string                 `json:"shop_domain"`
-	AccessToken crypto.EncryptedSecret `json:"access_token"`
-}
-
-func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, createUser, arg.ID, arg.ShopDomain, arg.AccessToken)
+func (q *Queries) CreateUser(ctx context.Context, argID id.ID[id.User]) (User, error) {
+	row := q.db.QueryRow(ctx, createUser, argID)
 	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.ShopDomain,
-		&i.AccessToken,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
+	err := row.Scan(&i.ID, &i.CreatedAt, &i.UpdatedAt)
 	return i, err
 }
 
-const getUserByShopDomain = `-- name: GetUserByShopDomain :one
-SELECT id, shop_domain, access_token, created_at, updated_at
+const getUserByID = `-- name: GetUserByID :one
+SELECT id, created_at, updated_at
 FROM users
-WHERE shop_domain = $1
+WHERE id = $1
 `
 
-func (q *Queries) GetUserByShopDomain(ctx context.Context, shopDomain string) (User, error) {
-	row := q.db.QueryRow(ctx, getUserByShopDomain, shopDomain)
+func (q *Queries) GetUserByID(ctx context.Context, argID id.ID[id.User]) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByID, argID)
 	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.ShopDomain,
-		&i.AccessToken,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
+	err := row.Scan(&i.ID, &i.CreatedAt, &i.UpdatedAt)
 	return i, err
 }
 
-const updateUserAccessToken = `-- name: UpdateUserAccessToken :one
+const updateUser = `-- name: UpdateUser :one
 UPDATE users
-SET access_token = $2, updated_at = NOW()
-WHERE shop_domain = $1
-RETURNING id, shop_domain, access_token, created_at, updated_at
+SET updated_at = NOW()
+WHERE id = $1
+RETURNING id, created_at, updated_at
 `
 
-type UpdateUserAccessTokenParams struct {
-	ShopDomain  string                 `json:"shop_domain"`
-	AccessToken crypto.EncryptedSecret `json:"access_token"`
-}
-
-func (q *Queries) UpdateUserAccessToken(ctx context.Context, arg UpdateUserAccessTokenParams) (User, error) {
-	row := q.db.QueryRow(ctx, updateUserAccessToken, arg.ShopDomain, arg.AccessToken)
+func (q *Queries) UpdateUser(ctx context.Context, argID id.ID[id.User]) (User, error) {
+	row := q.db.QueryRow(ctx, updateUser, argID)
 	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.ShopDomain,
-		&i.AccessToken,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
+	err := row.Scan(&i.ID, &i.CreatedAt, &i.UpdatedAt)
 	return i, err
 }
