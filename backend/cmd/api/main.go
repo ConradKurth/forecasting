@@ -13,7 +13,6 @@ import (
 	"github.com/ConradKurth/forecasting/backend/internal/http/dashboard"
 	"github.com/ConradKurth/forecasting/backend/internal/http/oauth"
 	"github.com/ConradKurth/forecasting/backend/internal/manager"
-	"github.com/ConradKurth/forecasting/backend/internal/service"
 	"github.com/ConradKurth/forecasting/backend/pkg/logger"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -40,13 +39,8 @@ func main() {
 	}
 	defer database.Close()
 
-	// Initialize services
-	userService := service.NewUserService(database.Users)
-	shopifyStoreService := service.NewShopifyStoreService(database.Shopify)
-	shopifyUserService := service.NewShopifyUserService(database.Shopify)
-
 	// Initialize managers
-	shopifyManager := manager.NewShopifyManager(userService, shopifyStoreService, shopifyUserService)
+	shopifyManager := manager.NewShopifyManager(database)
 
 	r := chi.NewRouter()
 

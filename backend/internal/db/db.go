@@ -15,12 +15,28 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
+// Database defines the interface for database operations
+type Database interface {
+	GetUsers() users.Querier
+	GetShopify() shopify.Querier
+}
+
 // DB holds all repository implementations
 type DB struct {
 	pool *pgxpool.Pool
 	// Repository implementations
 	Users   users.Querier
 	Shopify shopify.Querier
+}
+
+// GetUsers returns the users repository
+func (db *DB) GetUsers() users.Querier {
+	return db.Users
+}
+
+// GetShopify returns the shopify repository
+func (db *DB) GetShopify() shopify.Querier {
+	return db.Shopify
 }
 
 // New creates a new database connection pool using DATABASE_URL from config
@@ -143,4 +159,14 @@ func (db *DB) WithTx(ctx context.Context, fn func(*TxDB) error) error {
 type TxDB struct {
 	Users   users.Querier
 	Shopify shopify.Querier
+}
+
+// GetUsers returns the users repository
+func (txDB *TxDB) GetUsers() users.Querier {
+	return txDB.Users
+}
+
+// GetShopify returns the shopify repository
+func (txDB *TxDB) GetShopify() shopify.Querier {
+	return txDB.Shopify
 }
