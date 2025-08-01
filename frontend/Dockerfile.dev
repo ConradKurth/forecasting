@@ -1,0 +1,15 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy all files first
+COPY . .
+
+# Install dependencies (this will respect the volume mount setup in docker-compose)
+RUN npm install
+
+# Expose port for Vite dev server
+EXPOSE 5173
+
+# Run development server with host binding for Docker
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
