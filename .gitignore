@@ -1,3 +1,14 @@
 node_modules
 tmp
-api
+
+# Binary files
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.o
+*.obj
+*.bin
+*.out
+

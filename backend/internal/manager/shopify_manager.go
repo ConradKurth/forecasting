@@ -7,6 +7,7 @@ import (
 	"github.com/ConradKurth/forecasting/backend/internal/db"
 	"github.com/ConradKurth/forecasting/backend/internal/factory"
 	"github.com/ConradKurth/forecasting/backend/internal/service"
+	"github.com/ConradKurth/forecasting/backend/internal/worker"
 	"github.com/ConradKurth/forecasting/backend/pkg/id"
 	"github.com/ConradKurth/forecasting/backend/pkg/logger"
 	"github.com/pkg/errors"
@@ -27,23 +28,26 @@ import (
 type ShopifyManager struct {
 	database *db.DB
 	services *factory.ServiceInterfaces
+	queue    worker.Queue
 }
 
 // NewShopifyManager creates a new ShopifyManager instance with default services
-func NewShopifyManager(database *db.DB) *ShopifyManager {
+func NewShopifyManager(database *db.DB, queue worker.Queue) *ShopifyManager {
 	services := factory.NewServiceInterfacesFromDB(database)
 	return &ShopifyManager{
 		database: database,
 		services: services,
+		queue:    queue,
 	}
 }
 
 // NewShopifyManagerWithServices creates a new ShopifyManager with injected services
 // This is useful for testing with mock services
-func NewShopifyManagerWithServices(database *db.DB, services *factory.ServiceInterfaces) *ShopifyManager {
+func NewShopifyManagerWithServices(database *db.DB, services *factory.ServiceInterfaces, queue worker.Queue) *ShopifyManager {
 	return &ShopifyManager{
 		database: database,
 		services: services,
+		queue:    queue,
 	}
 }
 
@@ -123,6 +127,17 @@ func (m *ShopifyManager) CreateOrUpdateShopifyIntegration(ctx context.Context, p
 
 	if err != nil {
 		return nil, err
+	}
+
+	// Enqueue Shopify store sync task after successful integration creation
+	if m.queue != nil {
+		err = m.queue.EnqueueShopifyStoreSync(ctx, params.UserID.String(), params.ShopDomain, params.AccessToken)
+		if err != nil {
+			// Log the error but don't fail the integration creation
+			logger.Error("Failed to enqueue Shopify store sync task", "user_id", params.UserID, "shop_domain", params.ShopDomain, "error", err)
+		} else {
+			logger.Info("Successfully enqueued Shopify store sync task", "user_id", params.UserID, "shop_domain", params.ShopDomain)
+		}
 	}
 
 	return result, nil

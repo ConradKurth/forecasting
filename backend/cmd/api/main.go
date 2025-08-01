@@ -13,6 +13,7 @@ import (
 	"github.com/ConradKurth/forecasting/backend/internal/http/dashboard"
 	"github.com/ConradKurth/forecasting/backend/internal/http/oauth"
 	"github.com/ConradKurth/forecasting/backend/internal/manager"
+	"github.com/ConradKurth/forecasting/backend/internal/worker"
 	"github.com/ConradKurth/forecasting/backend/pkg/logger"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -39,8 +40,16 @@ func main() {
 	}
 	defer database.Close()
 
+	// Initialize worker queue client
+	workerQueue := worker.NewClient()
+	defer func() {
+		if err := workerQueue.Close(); err != nil {
+			logger.Error("Failed to close worker queue", "error", err)
+		}
+	}()
+
 	// Initialize managers
-	shopifyManager := manager.NewShopifyManager(database)
+	shopifyManager := manager.NewShopifyManager(database, workerQueue)
 
 	r := chi.NewRouter()
 

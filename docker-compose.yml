@@ -16,6 +16,17 @@ services:
     networks:
       - forecasting_network
 
+  redis:
+    image: redis:7-alpine
+    container_name: forecasting_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - forecast_redis:/data
+    networks:
+      - forecasting_network
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
@@ -23,6 +34,7 @@ services:
     container_name: forecasting_backend
     environment:
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/forecasting?sslmode=disable
+      - REDIS_URL=redis:6379
     ports:
       - "3001:3001"
     volumes:
@@ -30,6 +42,24 @@ services:
       - /app/tmp  # Don't mount tmp directory to avoid conflicts
     depends_on:
       - postgres
+      - redis
+    networks:
+      - forecasting_network
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    container_name: forecasting_worker
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/forecasting?sslmode=disable
+      - REDIS_URL=redis:6379
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - postgres
+      - redis
     networks:
       - forecasting_network
     restart: unless-stopped
@@ -54,6 +84,7 @@ services:
 
 volumes:
   forecast_postgres:
+  forecast_redis:
 
 networks:
   forecasting_network:

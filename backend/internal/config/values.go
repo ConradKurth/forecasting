@@ -4,6 +4,7 @@ type serviceConfig struct {
 	Env        string `env:"GO_ENV"`
 	Service    service
 	Database   database
+	Redis      redis
 	Shopify    shopify
 	Frontend   frontend
 	CORS       cors
@@ -32,6 +33,10 @@ type cors struct {
 
 type database struct {
 	URL string `long:"database-url" env:"DATABASE_URL" description:"Database connection URL" required:"true"`
+}
+
+type redis struct {
+	URL string `long:"redis-url" env:"REDIS_URL" default:"localhost:6379" description:"Redis connection URL"`
 }
 
 type encryption struct {
