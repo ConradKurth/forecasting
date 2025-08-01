@@ -15,8 +15,5 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the worker binary
-RUN go build -o worker cmd/worker/main.go
-
-# Run the worker
-CMD ["./worker"]
+# Run air for hot reloading with worker configuration
+CMD ["air", "-c", ".air.worker.toml"]

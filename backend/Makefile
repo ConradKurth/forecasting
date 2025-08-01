@@ -39,7 +39,9 @@ db-migrate-reset: ## Reset all migrations (WARNING: This will drop all data)
 # Development operations
 build: ## Build the application
 	@echo "Building application..."
-	@go build -o bin/app ./cmd/server
+	@mkdir -p tmp
+	@go build -o tmp/api ./cmd/api
+	@go build -o tmp/worker ./cmd/worker
 	@echo "✅ Build completed"
 
 test: ## Run tests
@@ -66,7 +68,6 @@ fmt: ## Format code
 # Clean up
 clean: ## Clean build artifacts
 	@echo "Cleaning build artifacts..."
-	@rm -rf bin/
 	@rm -rf tmp/
 	@echo "✅ Cleanup completed"
 

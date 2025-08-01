@@ -50,13 +50,14 @@ services:
   worker:
     build:
       context: ./backend
-      dockerfile: Dockerfile.worker
+      dockerfile: Dockerfile.dev.worker
     container_name: forecasting_worker
     environment:
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/forecasting?sslmode=disable
       - REDIS_URL=redis:6379
     volumes:
       - ./backend:/app
+      - /app/tmp  # Don't mount tmp directory to avoid conflicts
     depends_on:
       - postgres
       - redis

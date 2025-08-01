@@ -1,6 +1,10 @@
 node_modules
 tmp
 
+# Air build logs
+build-errors.log
+build-errors-worker.log
+
 # Binary files
 *.exe
 *.dll
@@ -11,4 +15,9 @@ tmp
 *.obj
 *.bin
 *.out
+
+# Go binaries
+api
+worker
+main
 
