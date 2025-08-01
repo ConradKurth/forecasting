@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -10,61 +9,46 @@ import (
 	"github.com/ConradKurth/forecasting/backend/internal/db"
 	"github.com/ConradKurth/forecasting/backend/internal/factory"
 	"github.com/ConradKurth/forecasting/backend/internal/worker"
-	"github.com/hibiken/asynq"
+	"github.com/ConradKurth/forecasting/backend/pkg/logger"
 )
 
 func main() {
+	// Initialize logger
+	logger.Init(logger.Level(config.Values.Logging.Level))
+
 	// Initialize database (config is loaded automatically)
 	database, err := db.New()
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		logger.Error("Failed to connect to database", "error", err)
+		os.Exit(1)
 	}
 	defer database.Close()
+
+	logger.Info("Database connected successfully")
 
 	// Create service factory
 	serviceFactory := factory.NewServiceFactory(database)
 
-	// Create Redis connection config
-	redisOpt := asynq.RedisClientOpt{
-		Addr: config.Values.Redis.URL,
-	}
-
-	// Create worker server
-	srv := asynq.NewServer(
-		redisOpt,
-		asynq.Config{
-			Concurrency: 10,
-			Queues: map[string]int{
-				"critical": 6,
-				"default":  3,
-				"low":      1,
-			},
-		},
-	)
-
-	// Create worker with services
-	w := worker.New(serviceFactory)
-
-	// Register task handlers
-	mux := asynq.NewServeMux()
-	w.RegisterHandlers(mux)
+	// Create worker server with middleware and proper configuration
+	server := worker.NewServer(serviceFactory)
 
 	// Handle graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		if err := srv.Run(mux); err != nil {
-			log.Fatalf("Worker server failed: %v", err)
+		if err := server.Run(); err != nil {
+			logger.Error("Worker server failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
-	log.Println("Worker server started. Press Ctrl+C to stop.")
+	logger.Info("Worker server started. Press Ctrl+C to stop.")
 
 	// Wait for shutdown signal
 	<-sigChan
-	log.Println("Shutting down worker server...")
+	logger.Info("Shutting down worker server...")
 
-	srv.Shutdown()
-	log.Println("Worker server stopped.")
+	server.Shutdown()
+	logger.Info("Worker server stopped.")
 }

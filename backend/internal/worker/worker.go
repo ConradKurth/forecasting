@@ -7,6 +7,7 @@ import (
 
 	"github.com/ConradKurth/forecasting/backend/internal/factory"
 	"github.com/ConradKurth/forecasting/backend/internal/shopify"
+	"github.com/ConradKurth/forecasting/backend/pkg/logger"
 	"github.com/hibiken/asynq"
 )
 
@@ -41,10 +42,17 @@ func (w *Worker) HandleShopifyStoreSync(ctx context.Context, t *asynq.Task) erro
 	}
 
 	// Fetch shop information from Shopify API
+	logger.Info("Fetching shop info from Shopify API", "shop", payload.ShopName, "user_id", payload.UserID)
 	shopInfo, err := shopifyClient.GetShopInfo(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to fetch shop info from Shopify API: %w", err)
 	}
+
+	logger.Info("Successfully fetched shop info", 
+		"shop", payload.ShopName, 
+		"name", shopInfo.Name, 
+		"currency", shopInfo.Currency, 
+		"timezone", shopInfo.Timezone)
 
 	// Get Shopify store service
 	shopifyStoreService := w.serviceFactory.CreateShopifyStoreService()
@@ -60,6 +68,13 @@ func (w *Worker) HandleShopifyStoreSync(ctx context.Context, t *asynq.Task) erro
 	if err != nil {
 		return fmt.Errorf("failed to update store in database: %w", err)
 	}
+
+	logger.Info("Successfully synced Shopify store data", 
+		"shop", payload.ShopName, 
+		"user_id", payload.UserID,
+		"name", shopInfo.Name, 
+		"currency", shopInfo.Currency, 
+		"timezone", shopInfo.Timezone)
 
 	return nil
 }

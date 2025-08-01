@@ -17,7 +17,5 @@ build-errors-worker.log
 *.out
 
 # Go binaries
-api
-worker
 main
 
