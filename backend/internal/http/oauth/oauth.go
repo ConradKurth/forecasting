@@ -3,18 +3,20 @@ package oauth
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
 
 	"github.com/ConradKurth/forecasting/backend/internal/auth"
 	"github.com/ConradKurth/forecasting/backend/internal/config"
+	"github.com/ConradKurth/forecasting/backend/internal/service"
 	"github.com/go-chi/chi/v5"
 )
 
-func InitRoutes(r *chi.Mux) {
+func InitRoutes(r *chi.Mux, userService *service.UserService) {
 	r.Get("/v1/shopify/install", RequestInstall)
-	r.Get("/v1/shopify/callback", RequestCallback)
+	r.Get("/v1/shopify/callback", RequestCallback(userService))
 }
 
 func RequestInstall(w http.ResponseWriter, r *http.Request) {
@@ -29,7 +31,8 @@ func RequestInstall(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
-func RequestCallback(w http.ResponseWriter, r *http.Request) {
+func RequestCallback(userService *service.UserService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 	shop := r.URL.Query().Get("shop")
 	code := r.URL.Query().Get("code")
 
@@ -60,8 +63,16 @@ func RequestCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Create or update user with the access token
+	user, err := userService.CreateOrUpdateUser(r.Context(), shop, tokenResp.AccessToken)
+	if err != nil {
+		log.Printf("Failed to create or update user for shop %s: %v", shop, err)
+		http.Error(w, "Failed to save user", http.StatusInternalServerError)
+		return
+	}
+
 	// Generate JWT token for the authenticated user
-	jwtToken, err := auth.GenerateJWT(shop, shop) // Using shop as userID for now
+	jwtToken, err := auth.GenerateJWT(user.ID.String(), shop)
 	if err != nil {
 		http.Error(w, "Failed to generate JWT token", http.StatusInternalServerError)
 		return
@@ -82,4 +93,5 @@ func RequestCallback(w http.ResponseWriter, r *http.Request) {
 
 	redirectTo := fmt.Sprintf("%v/callback?shop=%s&token=%s", config.Values.Frontend.URL, shop, jwtToken)
 	http.Redirect(w, r, redirectTo, http.StatusFound)
+	}
 }

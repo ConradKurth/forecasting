@@ -3,10 +3,12 @@ package config
 type serviceConfig struct {
 	Env        string `env:"GO_ENV"`
 	Service    service
+	Database   database
 	Shopify    shopify
 	Frontend   frontend
 	CORS       cors
 	Encryption encryption
+	Logging    logging
 }
 
 type service struct {
@@ -28,6 +30,14 @@ type cors struct {
 	AllowedOrigins []string `long:"allowed-origins" env-delim:"," default:"http://localhost:5173" env:"CORS_ALLOWED_ORIGINS" description:"CORS Allowed Origins"`
 }
 
+type database struct {
+	URL string `long:"database-url" env:"DATABASE_URL" description:"Database connection URL" required:"true"`
+}
+
 type encryption struct {
-	SecretKey string `long:"secret-key" env:"ENCRYPTION_SECRET_KEY" description:"32-byte secret key for AES-256-GCM encryption" required:"true"`
+	SecretKey string `long:"secret-key" env:"SECRET_KEY" description:"32-byte secret key for AES-256-GCM encryption" required:"true"`
+}
+
+type logging struct {
+	Level string `long:"log-level" env:"LOG_LEVEL" default:"info" description:"Log level (debug, info, warn, error)"`
 }

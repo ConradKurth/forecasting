@@ -13,15 +13,13 @@ import (
 
 // UserService provides business logic for user operations
 type UserService struct {
-	userRepo      users.Querier
-	encryptionKey []byte
+	userRepo users.Querier
 }
 
 // NewUserService creates a new UserService instance
-func NewUserService(userRepo users.Querier, encryptionKey []byte) *UserService {
+func NewUserService(userRepo users.Querier) *UserService {
 	return &UserService{
-		userRepo:      userRepo,
-		encryptionKey: encryptionKey,
+		userRepo: userRepo,
 	}
 }
 

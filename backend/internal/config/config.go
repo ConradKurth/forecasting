@@ -83,7 +83,7 @@ func parseConfig() (*serviceConfig, error) {
 func validateConfig(cfg *serviceConfig) error {
 	// Validate encryption secret key
 	if len(cfg.Encryption.SecretKey) != 32 {
-		return errors.Errorf("ENCRYPTION_SECRET_KEY must be exactly 32 bytes, got %d", len(cfg.Encryption.SecretKey))
+		return errors.Errorf("SECRET_KEY must be exactly 32 bytes, got %d", len(cfg.Encryption.SecretKey))
 	}
 
 	return nil
