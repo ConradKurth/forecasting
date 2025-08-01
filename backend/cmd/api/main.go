@@ -17,13 +17,8 @@ func main() {
 
 	r := chi.NewRouter()
 
-	fmt.Println(config.Values.CORS.AllowedOrigins)
-	for _, origin := range config.Values.CORS.AllowedOrigins {
-		fmt.Println(origin)
-	}
 	// Add CORS middleware
 	r.Use(cors.Handler(cors.Options{
-		// AllowedOrigins: []string{"http://localhost:5173", "https://ea0b79250aad.ngrok.app"},
 		AllowedOrigins: config.Values.CORS.AllowedOrigins,
 		AllowedMethods: []string{
 			http.MethodHead,
@@ -36,9 +31,7 @@ func main() {
 		AllowedHeaders:   []string{"*"},
 		AllowCredentials: true,
 		MaxAge:           300,
-		Debug:            true,
 	}))
-	// r.Use(cors.AllowAll().Handler)
 
 	// Add other middleware
 	r.Use(middleware.Logger)

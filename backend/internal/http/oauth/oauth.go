@@ -23,7 +23,6 @@ func RequestInstall(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Missing shop parameter", http.StatusBadRequest)
 		return
 	}
-	fmt.Println("Redirecting to", config.Values.Shopify.RedirectURL)
 	redirectURL := fmt.Sprintf("https://%s/admin/oauth/authorize?client_id=%s&scope=%s&redirect_uri=%s",
 		shop, config.Values.Shopify.ClientID, url.QueryEscape(strings.Join(config.Values.Shopify.Scopes, ",")), url.QueryEscape(config.Values.Shopify.RedirectURL))
 
@@ -33,7 +32,7 @@ func RequestInstall(w http.ResponseWriter, r *http.Request) {
 func RequestCallback(w http.ResponseWriter, r *http.Request) {
 	shop := r.URL.Query().Get("shop")
 	code := r.URL.Query().Get("code")
-	fmt.Println("Getting the callback")
+
 	if shop == "" || code == "" {
 		http.Error(w, "Missing shop or code", http.StatusBadRequest)
 		return
@@ -80,7 +79,7 @@ func RequestCallback(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Redirect to frontend callback page with parameters
-	fmt.Println("Redirecting to", config.Values.Frontend.URL)
+
 	redirectTo := fmt.Sprintf("%v/callback?shop=%s&token=%s", config.Values.Frontend.URL, shop, jwtToken)
 	http.Redirect(w, r, redirectTo, http.StatusFound)
 }

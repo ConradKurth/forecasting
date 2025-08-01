@@ -1,11 +1,12 @@
 package config
 
 type serviceConfig struct {
-	Env      string `env:"GO_ENV"`
-	Service  service
-	Shopify  shopify
-	Frontend frontend
-	CORS     cors
+	Env        string `env:"GO_ENV"`
+	Service    service
+	Shopify    shopify
+	Frontend   frontend
+	CORS       cors
+	Encryption encryption
 }
 
 type service struct {
@@ -25,4 +26,8 @@ type shopify struct {
 
 type cors struct {
 	AllowedOrigins []string `long:"allowed-origins" env-delim:"," default:"http://localhost:5173" env:"CORS_ALLOWED_ORIGINS" description:"CORS Allowed Origins"`
+}
+
+type encryption struct {
+	SecretKey string `long:"secret-key" env:"ENCRYPTION_SECRET_KEY" description:"32-byte secret key for AES-256-GCM encryption" required:"true"`
 }
