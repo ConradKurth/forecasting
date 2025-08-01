@@ -2,11 +2,11 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"log"
 
 	"github.com/ConradKurth/forecasting/backend/internal/repository/shopify"
 	"github.com/ConradKurth/forecasting/backend/pkg/id"
+	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 )
 
@@ -64,15 +64,15 @@ func (s *ShopifyStoreService) convertDomainShopifyStore(domainStore shopify.Shop
 	return store
 }
 
-// GetStoreByDomain retrieves a shopify store by shop domain
-func (s *ShopifyStoreService) GetStoreByDomain(ctx context.Context, shopDomain string) (*ShopifyStore, error) {
-	domainStore, err := s.storeRepo.GetShopifyStoreByDomain(ctx, shopDomain)
-	if err == sql.ErrNoRows {
+// GetStoreByDomain retrieves a shopify store by domain
+func (s *ShopifyStoreService) GetStoreByDomain(ctx context.Context, domain string) (*ShopifyStore, error) {
+	domainStore, err := s.storeRepo.GetShopifyStoreByDomain(ctx, domain)
+	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
 
 	if err != nil {
-		log.Printf("Failed to get shopify store by domain %s: %v", shopDomain, err)
+		log.Printf("Failed to get shopify store by domain %s: %v", domain, err)
 		return nil, errors.Wrapf(err, "failed to get shopify store")
 	}
 
@@ -82,7 +82,7 @@ func (s *ShopifyStoreService) GetStoreByDomain(ctx context.Context, shopDomain s
 // GetStoreByID retrieves a shopify store by ID
 func (s *ShopifyStoreService) GetStoreByID(ctx context.Context, storeID id.ID[id.ShopifyStore]) (*ShopifyStore, error) {
 	domainStore, err := s.storeRepo.GetShopifyStoreByID(ctx, storeID)
-	if err == sql.ErrNoRows {
+	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
 

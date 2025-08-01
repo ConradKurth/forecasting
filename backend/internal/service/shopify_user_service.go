@@ -2,13 +2,13 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"log"
 	"time"
 
 	"github.com/ConradKurth/forecasting/backend/internal/crypto"
 	"github.com/ConradKurth/forecasting/backend/internal/repository/shopify"
 	"github.com/ConradKurth/forecasting/backend/pkg/id"
+	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 )
 
@@ -66,7 +66,7 @@ func (s *ShopifyUserService) GetShopifyUserByUserAndDomain(ctx context.Context, 
 		UserID:     userID,
 		ShopDomain: shopDomain,
 	})
-	if err == sql.ErrNoRows {
+	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
 
@@ -144,7 +144,7 @@ func (s *ShopifyUserService) ValidateShopifyUser(ctx context.Context, userID id.
 		UserID:     userID,
 		ShopDomain: shopDomain,
 	})
-	if err == sql.ErrNoRows {
+	if err == pgx.ErrNoRows {
 		return false, nil
 	}
 	if err != nil {

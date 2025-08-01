@@ -41,14 +41,14 @@ func GetProfile(shopifyManager *manager.ShopifyManager) response.HandlerFunc {
 		}
 
 		return response.JSON(w, http.StatusOK, map[string]interface{}{
-			"id":             integration.User.ID,
-			"shop":           integration.Store.ShopDomain,
-			"shop_name":      integration.Store.ShopName,
-			"userId":         user.UserID,
-			"createdAt":      integration.User.CreatedAt,
-			"updatedAt":      integration.User.UpdatedAt,
-			"store":          integration.Store,
-			"shopify_user":   integration.ShopifyUser,
+			"id":           integration.User.ID,
+			"shop":         integration.Store.ShopDomain,
+			"shop_name":    integration.Store.ShopName,
+			"userId":       user.UserID,
+			"createdAt":    integration.User.CreatedAt,
+			"updatedAt":    integration.User.UpdatedAt,
+			"store":        integration.Store,
+			"shopify_user": integration.ShopifyUser,
 		})
 	}
 }

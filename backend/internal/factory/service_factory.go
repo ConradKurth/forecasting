@@ -30,7 +30,7 @@ func (f *ServiceFactory) CreateUserService() *service.UserService {
 	return service.NewUserService(f.dbConn.GetUsers())
 }
 
-// CreateShopifyStoreService creates a ShopifyStoreService from the current database connection  
+// CreateShopifyStoreService creates a ShopifyStoreService from the current database connection
 func (f *ServiceFactory) CreateShopifyStoreService() *service.ShopifyStoreService {
 	return service.NewShopifyStoreService(f.dbConn.GetShopify())
 }

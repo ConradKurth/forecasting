@@ -2,11 +2,11 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"log"
 
 	"github.com/ConradKurth/forecasting/backend/internal/repository/users"
 	"github.com/ConradKurth/forecasting/backend/pkg/id"
+	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 )
 
@@ -50,7 +50,7 @@ func (s *UserService) convertDomainUser(domainUser users.User) *User {
 // GetUser retrieves a user by ID
 func (s *UserService) GetUser(ctx context.Context, userID id.ID[id.User]) (*User, error) {
 	domainUser, err := s.userRepo.GetUserByID(ctx, userID)
-	if err == sql.ErrNoRows {
+	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
 
@@ -87,7 +87,7 @@ func (s *UserService) UpdateUser(ctx context.Context, userID id.ID[id.User]) (*U
 // ValidateUser checks if a user exists for the given user ID
 func (s *UserService) ValidateUser(ctx context.Context, userID id.ID[id.User]) (bool, error) {
 	_, err := s.userRepo.GetUserByID(ctx, userID)
-	if err == sql.ErrNoRows {
+	if err == pgx.ErrNoRows {
 		return false, nil
 	}
 	if err != nil {

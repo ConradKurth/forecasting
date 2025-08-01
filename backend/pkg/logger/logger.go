@@ -40,7 +40,7 @@ func Init(level Level) {
 		opts := &slog.HandlerOptions{
 			Level: toSlogLevel(level),
 		}
-		
+
 		handler := slog.NewJSONHandler(os.Stdout, opts)
 		instance = slog.New(handler)
 		slog.SetDefault(instance)
