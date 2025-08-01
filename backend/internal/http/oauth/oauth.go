@@ -11,13 +11,14 @@ import (
 	"github.com/ConradKurth/forecasting/backend/internal/auth"
 	"github.com/ConradKurth/forecasting/backend/internal/config"
 	"github.com/ConradKurth/forecasting/backend/internal/http/response"
-	"github.com/ConradKurth/forecasting/backend/internal/service"
+	"github.com/ConradKurth/forecasting/backend/internal/manager"
+	"github.com/ConradKurth/forecasting/backend/pkg/id"
 	"github.com/go-chi/chi/v5"
 )
 
-func InitRoutes(r *chi.Mux, userService *service.UserService) {
+func InitRoutes(r *chi.Mux, shopifyManager *manager.ShopifyManager) {
 	r.Get("/v1/shopify/install", response.Wrap(RequestInstall))
-	r.Get("/v1/shopify/callback", response.Wrap(RequestCallback(userService)))
+	r.Get("/v1/shopify/callback", response.Wrap(RequestCallback(shopifyManager)))
 }
 
 func RequestInstall(w http.ResponseWriter, r *http.Request) error {
@@ -32,7 +33,7 @@ func RequestInstall(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-func RequestCallback(userService *service.UserService) response.HandlerFunc {
+func RequestCallback(shopifyManager *manager.ShopifyManager) response.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		shop := r.URL.Query().Get("shop")
 		code := r.URL.Query().Get("code")
@@ -64,15 +65,23 @@ func RequestCallback(userService *service.UserService) response.HandlerFunc {
 			return response.InternalServerError("Failed to decode access token", err)
 		}
 
-		// Create or update user with the access token
-		user, err := userService.CreateOrUpdateUser(r.Context(), shop, tokenResp.AccessToken)
+		// Generate a user ID for this shop (you might want to get this from somewhere else)
+		userID := id.NewGeneration[id.User]()
+
+		// Create or update the complete shopify integration
+		integration, err := shopifyManager.CreateOrUpdateShopifyIntegration(r.Context(), manager.CreateShopifyIntegrationParams{
+			UserID:      userID,
+			ShopDomain:  shop,
+			AccessToken: tokenResp.AccessToken,
+			Scope:       strings.Join(config.Values.Shopify.Scopes, ","),
+		})
 		if err != nil {
-			log.Printf("Failed to create or update user for shop %s: %v", shop, err)
+			log.Printf("Failed to create or update shopify integration for shop %s: %v", shop, err)
 			return response.DatabaseError(err)
 		}
 
 		// Generate JWT token for the authenticated user
-		jwtToken, err := auth.GenerateJWT(shop, user.ID)
+		jwtToken, err := auth.GenerateJWT(shop, integration.User.ID)
 		if err != nil {
 			return response.InternalServerError("Failed to generate JWT token", err)
 		}

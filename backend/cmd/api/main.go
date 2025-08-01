@@ -12,6 +12,7 @@ import (
 	"github.com/ConradKurth/forecasting/backend/internal/db"
 	"github.com/ConradKurth/forecasting/backend/internal/http/dashboard"
 	"github.com/ConradKurth/forecasting/backend/internal/http/oauth"
+	"github.com/ConradKurth/forecasting/backend/internal/manager"
 	"github.com/ConradKurth/forecasting/backend/internal/service"
 	"github.com/ConradKurth/forecasting/backend/pkg/logger"
 	"github.com/go-chi/chi/v5"
@@ -41,6 +42,11 @@ func main() {
 
 	// Initialize services
 	userService := service.NewUserService(database.Users)
+	shopifyStoreService := service.NewShopifyStoreService(database.Shopify)
+	shopifyUserService := service.NewShopifyUserService(database.Shopify)
+
+	// Initialize managers
+	shopifyManager := manager.NewShopifyManager(userService, shopifyStoreService, shopifyUserService)
 
 	r := chi.NewRouter()
 
@@ -65,8 +71,8 @@ func main() {
 	r.Use(middleware.Recoverer)
 
 	// Initialize routes
-	oauth.InitRoutes(r, userService)
-	dashboard.InitRoutes(r, userService)
+	oauth.InitRoutes(r, shopifyManager)
+	dashboard.InitRoutes(r, shopifyManager)
 
 	// Create HTTP server
 	server := &http.Server{

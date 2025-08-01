@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ConradKurth/forecasting/backend/internal/config"
+	"github.com/ConradKurth/forecasting/backend/internal/repository/shopify"
 	"github.com/ConradKurth/forecasting/backend/internal/repository/users"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -18,7 +19,8 @@ import (
 type DB struct {
 	pool *pgxpool.Pool
 	// Repository implementations
-	Users users.Querier
+	Users   users.Querier
+	Shopify shopify.Querier
 }
 
 // New creates a new database connection pool using DATABASE_URL from config
@@ -85,10 +87,12 @@ func NewWithURL(databaseURL string) (*DB, error) {
 
 	// Initialize repositories
 	userQueries := users.New(pool)
+	shopifyQueries := shopify.New(pool)
 
 	return &DB{
-		pool:  pool,
-		Users: userQueries,
+		pool:    pool,
+		Users:   userQueries,
+		Shopify: shopifyQueries,
 	}, nil
 }
 
@@ -110,7 +114,8 @@ func (db *DB) WithTx(ctx context.Context, fn func(*TxDB) error) error {
 	}
 
 	txDB := &TxDB{
-		Users: users.New(tx),
+		Users:   users.New(tx),
+		Shopify: shopify.New(tx),
 	}
 
 	defer func() {
@@ -136,5 +141,6 @@ func (db *DB) WithTx(ctx context.Context, fn func(*TxDB) error) error {
 
 // TxDB provides repository access within a transaction
 type TxDB struct {
-	Users users.Querier
+	Users   users.Querier
+	Shopify shopify.Querier
 }

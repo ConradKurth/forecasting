@@ -6,42 +6,49 @@ import (
 
 	"github.com/ConradKurth/forecasting/backend/internal/auth"
 	"github.com/ConradKurth/forecasting/backend/internal/http/response"
-	"github.com/ConradKurth/forecasting/backend/internal/service"
+	"github.com/ConradKurth/forecasting/backend/internal/manager"
+	"github.com/ConradKurth/forecasting/backend/pkg/id"
 	"github.com/go-chi/chi/v5"
 )
 
-func InitRoutes(r *chi.Mux, userService *service.UserService) {
+func InitRoutes(r *chi.Mux, shopifyManager *manager.ShopifyManager) {
 	r.Route("/v1/dashboard", func(r chi.Router) {
 		r.Use(auth.AuthMiddleware)
-		r.Get("/profile", response.Wrap(GetProfile(userService)))
+		r.Get("/profile", response.Wrap(GetProfile(shopifyManager)))
 		r.Get("/data", response.Wrap(GetDashboardData))
 	})
 }
 
-func GetProfile(userService *service.UserService) response.HandlerFunc {
+func GetProfile(shopifyManager *manager.ShopifyManager) response.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		user, ok := auth.GetUserFromContext(r.Context())
 		if !ok {
 			return response.InternalServerError("User not found in context", nil)
 		}
 
-		// Get full user details from the database
-		dbUser, err := userService.GetUser(r.Context(), user.Shop)
+		// Convert the user ID from string to typed ID
+		userID, err := id.New[id.User](user.UserID)
 		if err != nil {
-			log.Printf("Failed to get user details for shop %s: %v", user.Shop, err)
+			log.Printf("Failed to parse user ID %s: %v", user.UserID, err)
+			return response.InternalServerError("Invalid user ID", err)
+		}
+
+		// Get the full shopify integration
+		integration, err := shopifyManager.GetShopifyIntegration(r.Context(), userID, user.Shop)
+		if err != nil {
+			log.Printf("Failed to get shopify integration for user %s and shop %s: %v", userID, user.Shop, err)
 			return response.InternalServerError("Failed to get user details", err)
 		}
 
-		if dbUser == nil {
-			return response.UserNotFound()
-		}
-
 		return response.JSON(w, http.StatusOK, map[string]interface{}{
-			"id":         dbUser.ID,
-			"shop":       dbUser.ShopDomain,
-			"userId":     user.UserID,
-			"createdAt":  dbUser.CreatedAt,
-			"updatedAt":  dbUser.UpdatedAt,
+			"id":             integration.User.ID,
+			"shop":           integration.Store.ShopDomain,
+			"shop_name":      integration.Store.ShopName,
+			"userId":         user.UserID,
+			"createdAt":      integration.User.CreatedAt,
+			"updatedAt":      integration.User.UpdatedAt,
+			"store":          integration.Store,
+			"shopify_user":   integration.ShopifyUser,
 		})
 	}
 }

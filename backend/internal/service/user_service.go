@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"log"
 
-	"github.com/ConradKurth/forecasting/backend/internal/crypto"
 	"github.com/ConradKurth/forecasting/backend/internal/repository/users"
 	"github.com/ConradKurth/forecasting/backend/pkg/id"
 	"github.com/pkg/errors"
@@ -15,8 +14,9 @@ import (
 // This follows the dependency inversion principle - the service defines what it needs
 // rather than depending on the full repository interface.
 type UserRepository interface {
-	GetUserByShopDomain(ctx context.Context, shopDomain string) (users.User, error)
-	CreateOrUpdateUser(ctx context.Context, arg users.CreateOrUpdateUserParams) (users.User, error)
+	GetUserByID(ctx context.Context, argID id.ID[id.User]) (users.User, error)
+	CreateUser(ctx context.Context, argID id.ID[id.User]) (users.User, error)
+	UpdateUser(ctx context.Context, argID id.ID[id.User]) (users.User, error)
 }
 
 // UserService provides business logic for user operations
@@ -33,74 +33,60 @@ func NewUserService(userRepo UserRepository) *UserService {
 
 // User represents a user in the service layer
 type User struct {
-	ID         id.ID[id.User] `json:"id"`
-	ShopDomain string         `json:"shop_domain"`
-	CreatedAt  string         `json:"created_at"`
-	UpdatedAt  string         `json:"updated_at"`
+	ID        id.ID[id.User] `json:"id"`
+	CreatedAt string         `json:"created_at"`
+	UpdatedAt string         `json:"updated_at"`
 }
 
 // convertDomainUser converts a repository user to a service user
 func (s *UserService) convertDomainUser(domainUser users.User) *User {
 	return &User{
-		ID:         domainUser.ID,
-		ShopDomain: domainUser.ShopDomain,
-		CreatedAt:  domainUser.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt:  domainUser.UpdatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
+		ID:        domainUser.ID,
+		CreatedAt: domainUser.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt: domainUser.UpdatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
 	}
 }
 
-// GetUser retrieves a user by shop domain
-func (s *UserService) GetUser(ctx context.Context, shopDomain string) (*User, error) {
-	domainUser, err := s.userRepo.GetUserByShopDomain(ctx, shopDomain)
+// GetUser retrieves a user by ID
+func (s *UserService) GetUser(ctx context.Context, userID id.ID[id.User]) (*User, error) {
+	domainUser, err := s.userRepo.GetUserByID(ctx, userID)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 
 	if err != nil {
-		log.Printf("Failed to get user by shop domain %s: %v", shopDomain, err)
+		log.Printf("Failed to get user by ID %s: %v", userID, err)
 		return nil, errors.Wrapf(err, "failed to get user")
 	}
 
 	return s.convertDomainUser(domainUser), nil
 }
 
-// CreateOrUpdateUser creates or updates a user with their Shopify access token
-func (s *UserService) CreateOrUpdateUser(ctx context.Context, shopDomain, accessToken string) (*User, error) {
-	domainUser, err := s.userRepo.CreateOrUpdateUser(ctx, users.CreateOrUpdateUserParams{
-		ID:          id.NewGeneration[id.User](),
-		ShopDomain:  shopDomain,
-		AccessToken: crypto.EncryptedSecret(accessToken),
-	})
+// CreateUser creates a new user
+func (s *UserService) CreateUser(ctx context.Context, userID id.ID[id.User]) (*User, error) {
+	domainUser, err := s.userRepo.CreateUser(ctx, userID)
 	if err != nil {
-		log.Printf("Failed to create or update user for shop %s: %v", shopDomain, err)
-		return nil, errors.Wrapf(err, "failed to create or update user")
+		log.Printf("Failed to create user %s: %v", userID, err)
+		return nil, errors.Wrapf(err, "failed to create user")
 	}
 
 	return s.convertDomainUser(domainUser), nil
 }
 
-// GetShopifyAccessToken retrieves and decrypts the Shopify access token for a shop
-// This method handles the complete decryption process and should be used for making
-// authenticated Shopify API calls
-func (s *UserService) GetShopifyAccessToken(ctx context.Context, shopDomain string) (string, error) {
-	domainUser, err := s.userRepo.GetUserByShopDomain(ctx, shopDomain)
+// UpdateUser updates a user's updated_at timestamp
+func (s *UserService) UpdateUser(ctx context.Context, userID id.ID[id.User]) (*User, error) {
+	domainUser, err := s.userRepo.UpdateUser(ctx, userID)
 	if err != nil {
-		log.Printf("Failed to get user by shop domain %s: %v", shopDomain, err)
-		return "", errors.Wrapf(err, "failed to get user for token decryption")
+		log.Printf("Failed to update user %s: %v", userID, err)
+		return nil, errors.Wrapf(err, "failed to update user")
 	}
 
-	// The access token is automatically decrypted when we call String() on the EncryptedSecret
-	accessToken := domainUser.AccessToken.String()
-	if accessToken == "" {
-		return "", errors.Errorf("no access token found for shop domain: %s", shopDomain)
-	}
-
-	return accessToken, nil
+	return s.convertDomainUser(domainUser), nil
 }
 
-// ValidateUser checks if a user exists for the given shop domain
-func (s *UserService) ValidateUser(ctx context.Context, shopDomain string) (bool, error) {
-	_, err := s.userRepo.GetUserByShopDomain(ctx, shopDomain)
+// ValidateUser checks if a user exists for the given user ID
+func (s *UserService) ValidateUser(ctx context.Context, userID id.ID[id.User]) (bool, error) {
+	_, err := s.userRepo.GetUserByID(ctx, userID)
 	if err == sql.ErrNoRows {
 		return false, nil
 	}
