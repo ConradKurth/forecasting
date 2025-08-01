@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/ConradKurth/forecasting/backend/pkg/id"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -15,11 +16,11 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-func GenerateJWT(shop, userID string) (string, error) {
+func GenerateJWT(shop string, userID id.ID[id.User]) (string, error) {
 	expirationTime := time.Now().Add(24 * time.Hour)
 	claims := &Claims{
 		Shop:   shop,
-		UserID: userID,
+		UserID: userID.String(),
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expirationTime),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -32,7 +33,7 @@ func GenerateJWT(shop, userID string) (string, error) {
 
 func ValidateJWT(tokenString string) (*Claims, error) {
 	claims := &Claims{}
-	
+
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
 		return jwtSecret, nil
 	})

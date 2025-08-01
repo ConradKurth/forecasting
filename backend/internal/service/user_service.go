@@ -11,13 +11,21 @@ import (
 	"github.com/pkg/errors"
 )
 
+// UserRepository defines the interface that the UserService needs from the repository layer.
+// This follows the dependency inversion principle - the service defines what it needs
+// rather than depending on the full repository interface.
+type UserRepository interface {
+	GetUserByShopDomain(ctx context.Context, shopDomain string) (users.User, error)
+	CreateOrUpdateUser(ctx context.Context, arg users.CreateOrUpdateUserParams) (users.User, error)
+}
+
 // UserService provides business logic for user operations
 type UserService struct {
-	userRepo users.Querier
+	userRepo UserRepository
 }
 
 // NewUserService creates a new UserService instance
-func NewUserService(userRepo users.Querier) *UserService {
+func NewUserService(userRepo UserRepository) *UserService {
 	return &UserService{
 		userRepo: userRepo,
 	}

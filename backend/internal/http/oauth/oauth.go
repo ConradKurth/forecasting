@@ -33,65 +33,65 @@ func RequestInstall(w http.ResponseWriter, r *http.Request) {
 
 func RequestCallback(userService *service.UserService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-	shop := r.URL.Query().Get("shop")
-	code := r.URL.Query().Get("code")
+		shop := r.URL.Query().Get("shop")
+		code := r.URL.Query().Get("code")
 
-	if shop == "" || code == "" {
-		http.Error(w, "Missing shop or code", http.StatusBadRequest)
-		return
-	}
+		if shop == "" || code == "" {
+			http.Error(w, "Missing shop or code", http.StatusBadRequest)
+			return
+		}
 
-	accessTokenURL := fmt.Sprintf("https://%s/admin/oauth/access_token", shop)
+		accessTokenURL := fmt.Sprintf("https://%s/admin/oauth/access_token", shop)
 
-	form := url.Values{}
-	form.Set("client_id", config.Values.Shopify.ClientID)
-	form.Set("client_secret", config.Values.Shopify.ClientSecret)
-	form.Set("code", code)
+		form := url.Values{}
+		form.Set("client_id", config.Values.Shopify.ClientID)
+		form.Set("client_secret", config.Values.Shopify.ClientSecret)
+		form.Set("code", code)
 
-	resp, err := http.Post(accessTokenURL, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
-	if err != nil {
-		http.Error(w, "Failed to get access token", http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
+		resp, err := http.Post(accessTokenURL, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
+		if err != nil {
+			http.Error(w, "Failed to get access token", http.StatusInternalServerError)
+			return
+		}
+		defer resp.Body.Close()
 
-	var tokenResp struct {
-		AccessToken string `json:"access_token"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		http.Error(w, "Failed to decode access token", http.StatusInternalServerError)
-		return
-	}
+		var tokenResp struct {
+			AccessToken string `json:"access_token"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+			http.Error(w, "Failed to decode access token", http.StatusInternalServerError)
+			return
+		}
 
-	// Create or update user with the access token
-	user, err := userService.CreateOrUpdateUser(r.Context(), shop, tokenResp.AccessToken)
-	if err != nil {
-		log.Printf("Failed to create or update user for shop %s: %v", shop, err)
-		http.Error(w, "Failed to save user", http.StatusInternalServerError)
-		return
-	}
+		// Create or update user with the access token
+		user, err := userService.CreateOrUpdateUser(r.Context(), shop, tokenResp.AccessToken)
+		if err != nil {
+			log.Printf("Failed to create or update user for shop %s: %v", shop, err)
+			http.Error(w, "Failed to save user", http.StatusInternalServerError)
+			return
+		}
 
-	// Generate JWT token for the authenticated user
-	jwtToken, err := auth.GenerateJWT(user.ID.String(), shop)
-	if err != nil {
-		http.Error(w, "Failed to generate JWT token", http.StatusInternalServerError)
-		return
-	}
+		// Generate JWT token for the authenticated user
+		jwtToken, err := auth.GenerateJWT(shop, user.ID)
+		if err != nil {
+			http.Error(w, "Failed to generate JWT token", http.StatusInternalServerError)
+			return
+		}
 
-	// Set JWT as an HTTP-only cookie and also return it as JSON
-	http.SetCookie(w, &http.Cookie{
-		Name:     "auth_token",
-		Value:    jwtToken,
-		HttpOnly: true,
-		Secure:   false, // Set to true in production with HTTPS
-		SameSite: http.SameSiteLaxMode,
-		Path:     "/",
-		MaxAge:   86400, // 24 hours
-	})
+		// Set JWT as an HTTP-only cookie and also return it as JSON
+		http.SetCookie(w, &http.Cookie{
+			Name:     "auth_token",
+			Value:    jwtToken,
+			HttpOnly: true,
+			Secure:   false, // Set to true in production with HTTPS
+			SameSite: http.SameSiteLaxMode,
+			Path:     "/",
+			MaxAge:   86400, // 24 hours
+		})
 
-	// Redirect to frontend callback page with parameters
+		// Redirect to frontend callback page with parameters
 
-	redirectTo := fmt.Sprintf("%v/callback?shop=%s&token=%s", config.Values.Frontend.URL, shop, jwtToken)
-	http.Redirect(w, r, redirectTo, http.StatusFound)
+		redirectTo := fmt.Sprintf("%v/callback?shop=%s&token=%s", config.Values.Frontend.URL, shop, jwtToken)
+		http.Redirect(w, r, redirectTo, http.StatusFound)
 	}
 }
