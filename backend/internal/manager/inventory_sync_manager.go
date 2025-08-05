@@ -14,6 +14,112 @@ import (
 	"github.com/pkg/errors"
 )
 
+// SyncStatus represents the status of a synchronization operation
+type SyncStatus string
+
+const (
+	// Standard sync statuses
+	SyncStatusPending    SyncStatus = "pending"
+	SyncStatusInProgress SyncStatus = "in_progress"
+	SyncStatusCompleted  SyncStatus = "completed"
+	SyncStatusFailed     SyncStatus = "failed"
+
+	// Special result statuses
+	SyncStatusSyncStarted     SyncStatus = "sync_started"
+	SyncStatusNeverSynced     SyncStatus = "never_synced"
+	SyncStatusPartialSyncOnly SyncStatus = "partial_sync_only"
+)
+
+// EntityType represents the type of entity being synchronized
+type EntityType string
+
+const (
+	EntityTypeFullSync       EntityType = "full_sync"
+	EntityTypeProduct        EntityType = "product"
+	EntityTypeInventoryItem  EntityType = "inventory_item"
+	EntityTypeInventoryLevel EntityType = "inventory_level"
+	EntityTypeOrder          EntityType = "order"
+	EntityTypeLocation       EntityType = "location"
+)
+
+// Type conversion helpers to keep conversions DRY and centralized
+
+// ConvertSyncStatus provides bidirectional conversion between core and manager SyncStatus types
+type ConvertSyncStatus struct{}
+
+func (ConvertSyncStatus) FromCore(coreStatus core.SyncStatus) SyncStatus {
+	switch coreStatus {
+	case core.SyncStatusPending:
+		return SyncStatusPending
+	case core.SyncStatusInProgress:
+		return SyncStatusInProgress
+	case core.SyncStatusCompleted:
+		return SyncStatusCompleted
+	case core.SyncStatusFailed:
+		return SyncStatusFailed
+	default:
+		return SyncStatusPending
+	}
+}
+
+func (ConvertSyncStatus) ToCore(managerStatus SyncStatus) core.SyncStatus {
+	switch managerStatus {
+	case SyncStatusPending:
+		return core.SyncStatusPending
+	case SyncStatusInProgress:
+		return core.SyncStatusInProgress
+	case SyncStatusCompleted:
+		return core.SyncStatusCompleted
+	case SyncStatusFailed:
+		return core.SyncStatusFailed
+	default:
+		return core.SyncStatusPending
+	}
+}
+
+// ConvertEntityType provides bidirectional conversion between core and manager EntityType types
+type ConvertEntityType struct{}
+
+func (ConvertEntityType) FromCore(coreEntity core.EntityType) EntityType {
+	switch coreEntity {
+	case core.EntityTypeFullSync:
+		return EntityTypeFullSync
+	case core.EntityTypeProducts:
+		return EntityTypeProduct
+	case core.EntityTypeInventory:
+		return EntityTypeInventoryItem
+	case core.EntityTypeOrders:
+		return EntityTypeOrder
+	case core.EntityTypeLocations:
+		return EntityTypeLocation
+	default:
+		return EntityTypeFullSync
+	}
+}
+
+func (ConvertEntityType) ToCore(managerEntity EntityType) core.EntityType {
+	switch managerEntity {
+	case EntityTypeFullSync:
+		return core.EntityTypeFullSync
+	case EntityTypeProduct:
+		return core.EntityTypeProducts
+	case EntityTypeInventoryItem:
+		return core.EntityTypeInventory
+	case EntityTypeOrder:
+		return core.EntityTypeOrders
+	case EntityTypeLocation:
+		return core.EntityTypeLocations
+	default:
+		return core.EntityTypeFullSync
+	}
+}
+
+// Global converter instances for easy access
+var (
+	ConvertSync   = ConvertSyncStatus{}
+	ConvertEntity = ConvertEntityType{}
+)
+
 // InventorySyncManager orchestrates inventory synchronization operations
 // It ensures data consistency by wrapping operations in database transactions
 // and coordinates between multiple repositories for complex sync workflows
@@ -41,83 +147,70 @@ type SyncRequest struct {
 
 // SyncResult represents the result of a synchronization operation
 type SyncResult struct {
-	IntegrationID string `json:"integration_id"`
-	Status        string `json:"status"`
-	Error         string `json:"error,omitempty"`
+	IntegrationID string     `json:"integration_id"`
+	Status        SyncStatus `json:"status"`
+	Error         string     `json:"error,omitempty"`
 }
 
 // TriggerShopifySync orchestrates a complete Shopify synchronization process
 // This includes validating access, creating integrations, and triggering async sync
 func (m *InventorySyncManager) TriggerShopifySync(ctx context.Context, req SyncRequest) (*SyncResult, error) {
-	var result *SyncResult
-
-	err := m.database.WithTx(ctx, func(txDB *db.TxDB) error {
-		// Validate user exists
-		_, err := txDB.GetUsers().GetUserByID(ctx, req.UserID)
-		if err != nil {
-			return errors.Wrap(err, "failed to get user")
-		}
-
-		// Get shop and validate it exists
-		shop, err := txDB.GetShopify().GetShopifyStoreByDomain(ctx, req.ShopDomain)
-		if err != nil {
-			return errors.Wrap(err, "shop not found")
-		}
-
-		// Get shopify user to get access token
-		shopifyUser, err := txDB.GetShopify().GetShopifyUserByUserAndStore(ctx, shopify.GetShopifyUserByUserAndStoreParams{
-			UserID:         req.UserID,
-			ShopifyStoreID: shop.ID,
-		})
-		if err != nil {
-			return errors.Wrap(err, "failed to get access token")
-		}
-		
-		accessToken := shopifyUser.AccessToken.String()
-		if accessToken == "" {
-			return errors.New("no access token found for user and shop")
-		}
-
-		// Create or get platform integration
-		integration, err := m.getOrCreateShopifyIntegration(ctx, shop.ID, req.ShopDomain)
-		if err != nil {
-			return errors.Wrap(err, "failed to get/create integration")
-		}
-
-		// Check if sync should proceed
-		if !req.Force {
-			shouldSkip, skipReason, err := m.shouldSkipSync(ctx, integration.ID)
-			if err != nil {
-				return errors.Wrap(err, "failed to check sync status")
-			}
-			if shouldSkip {
-				result = &SyncResult{
-					IntegrationID: integration.ID.String(),
-					Status:        string(skipReason),
-				}
-				return nil
-			}
-		}
-
-		// Enqueue async sync task
-		err = m.queue.EnqueueShopifyInventorySync(ctx, integration.ID.String(), req.ShopDomain, accessToken)
-		if err != nil {
-			return errors.Wrap(err, "failed to enqueue sync task")
-		}
-
-		result = &SyncResult{
-			IntegrationID: integration.ID.String(),
-			Status:        "sync_started",
-		}
-
-		return nil
-	})
-
+	// Validate user exists
+	_, err := m.database.GetUsers().GetUserByID(ctx, req.UserID)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to get user")
 	}
 
-	return result, nil
+	// Get shop and validate it exists
+	shop, err := m.database.GetShopify().GetShopifyStoreByDomain(ctx, req.ShopDomain)
+	if err != nil {
+		return nil, errors.Wrap(err, "shop not found")
+	}
+
+	// Get shopify user to get access token
+	shopifyUser, err := m.database.GetShopify().GetShopifyUserByUserAndStore(ctx, shopify.GetShopifyUserByUserAndStoreParams{
+		UserID:         req.UserID,
+		ShopifyStoreID: shop.ID,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get access token")
+	}
+
+	accessToken := shopifyUser.AccessToken.String()
+	if accessToken == "" {
+		return nil, errors.New("no access token found for user and shop")
+	}
+
+	// Create or get platform integration
+	integration, err := m.getOrCreateShopifyIntegration(ctx, shop.ID, req.ShopDomain)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get/create integration")
+	}
+
+	// Check if sync should proceed
+	if !req.Force {
+		shouldSkip, skipReason, err := m.shouldSkipSync(ctx, integration.ID)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to check sync status")
+		}
+		if shouldSkip {
+			return &SyncResult{
+				IntegrationID: integration.ID.String(),
+				Status:        skipReason,
+			}, nil
+		}
+	}
+
+	// Enqueue async sync task
+	err = m.queue.EnqueueShopifyInventorySync(ctx, integration.ID.String(), req.ShopDomain, accessToken)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to enqueue sync task")
+	}
+
+	return &SyncResult{
+		IntegrationID: integration.ID.String(),
+		Status:        SyncStatusSyncStarted,
+	}, nil
 }
 
 // GetSyncStatus retrieves the current synchronization status for a shop
@@ -148,12 +241,12 @@ func (m *InventorySyncManager) GetSyncStatus(ctx context.Context, userID id.ID[i
 	}
 
 	if len(syncStates) == 0 {
-		result.Status = "never_synced"
+		result.Status = SyncStatusNeverSynced
 	} else {
 		// Find the most recent full_sync
 		for _, state := range syncStates {
 			if state.EntityType == core.EntityTypeFullSync {
-				result.Status = string(state.SyncStatus)
+				result.Status = ConvertSync.FromCore(state.SyncStatus)
 				if state.ErrorMessage.Valid {
 					result.Error = state.ErrorMessage.String
 				}
@@ -161,7 +254,7 @@ func (m *InventorySyncManager) GetSyncStatus(ctx context.Context, userID id.ID[i
 			}
 		}
 		if result.Status == "" {
-			result.Status = "partial_sync_only"
+			result.Status = SyncStatusPartialSyncOnly
 		}
 	}
 
@@ -195,7 +288,7 @@ func (m *InventorySyncManager) getOrCreateShopifyIntegration(ctx context.Context
 }
 
 // shouldSkipSync determines if a sync should be skipped based on current state
-func (m *InventorySyncManager) shouldSkipSync(ctx context.Context, integrationID id.ID[id.PlatformIntegration]) (bool, core.SyncStatus, error) {
+func (m *InventorySyncManager) shouldSkipSync(ctx context.Context, integrationID id.ID[id.PlatformIntegration]) (bool, SyncStatus, error) {
 	syncState, err := m.database.GetCore().GetSyncState(ctx, core.GetSyncStateParams{
 		IntegrationID: integrationID,
 		EntityType:    core.EntityTypeFullSync,
@@ -206,14 +299,14 @@ func (m *InventorySyncManager) shouldSkipSync(ctx context.Context, integrationID
 	}
 
 	if syncState.SyncStatus == core.SyncStatusInProgress {
-		return true, core.SyncStatusInProgress, nil
+		return true, SyncStatusInProgress, nil
 	}
 
 	// Check if recently synced (within 30 minutes)
 	if syncState.SyncStatus == core.SyncStatusCompleted &&
 		syncState.LastSyncedAt.Valid &&
 		time.Since(syncState.LastSyncedAt.Time) < 30*time.Minute { // 30 minutes
-		return true, core.SyncStatusCompleted, nil
+		return true, SyncStatusCompleted, nil
 	}
 
 	return false, "", nil
