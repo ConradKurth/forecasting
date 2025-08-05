@@ -51,7 +51,7 @@ func main() {
 
 	// Initialize managers
 	shopifyManager := manager.NewShopifyManager(database, workerQueue)
-	syncManager := manager.NewInventorySyncManager(database, shopifyManager)
+	syncManager := manager.NewInventorySyncManager(database, shopifyManager, workerQueue)
 
 	r := chi.NewRouter()
 

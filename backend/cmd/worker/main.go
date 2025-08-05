@@ -7,7 +7,7 @@ import (
 
 	"github.com/ConradKurth/forecasting/backend/internal/config"
 	"github.com/ConradKurth/forecasting/backend/internal/db"
-	"github.com/ConradKurth/forecasting/backend/internal/factory"
+	"github.com/ConradKurth/forecasting/backend/internal/manager"
 	"github.com/ConradKurth/forecasting/backend/internal/worker"
 	"github.com/ConradKurth/forecasting/backend/pkg/logger"
 )
@@ -26,11 +26,20 @@ func main() {
 
 	logger.Info("Database connected successfully")
 
-	// Create service factory
-	serviceFactory := factory.NewServiceFactory(database)
+	// Initialize worker queue client
+	workerQueue := worker.NewClient()
+	defer func() {
+		if err := workerQueue.Close(); err != nil {
+			logger.Error("Failed to close worker queue", "error", err)
+		}
+	}()
+
+	// Initialize managers
+	shopifyManager := manager.NewShopifyManager(database, workerQueue)
+	syncManager := manager.NewInventorySyncManager(database, shopifyManager, workerQueue)
 
 	// Create worker server with middleware and proper configuration
-	server := worker.NewServer(serviceFactory)
+	server := worker.NewServer(shopifyManager, syncManager)
 
 	// Handle graceful shutdown
 	sigChan := make(chan os.Signal, 1)

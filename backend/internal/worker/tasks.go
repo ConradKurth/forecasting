@@ -3,38 +3,35 @@ package worker
 import (
 	"encoding/json"
 
+	"github.com/ConradKurth/forecasting/backend/pkg/id"
 	"github.com/hibiken/asynq"
 )
 
 // Task types
 const (
-	TypeShopifyStoreSync      = "shopify:store_sync"
-	TypeShopifyInventorySync  = "shopify:inventory_sync"
-	TypeShopifyLocationsSync  = "shopify:locations_sync"
-	TypeShopifyProductsSync   = "shopify:products_sync"
-	TypeShopifyOrdersSync     = "shopify:orders_sync"
+	TypeShopifyStoreSync     = "shopify:store_sync"
+	TypeShopifyInventorySync = "shopify:inventory_sync"
+	TypeShopifyLocationsSync = "shopify:locations_sync"
+	TypeShopifyProductsSync  = "shopify:products_sync"
+	TypeShopifyOrdersSync    = "shopify:orders_sync"
 )
 
 // ShopifyStoreSyncPayload contains data needed for Shopify store sync
 type ShopifyStoreSyncPayload struct {
-	UserID   string `json:"user_id"`
-	ShopName string `json:"shop_name"`
-	Token    string `json:"token"`
+	UserID id.ID[id.User]         `json:"user_id"`
+	ShopID id.ID[id.ShopifyStore] `json:"shop_id"`
 }
 
 // ShopifyInventorySyncPayload contains data needed for Shopify inventory sync
 type ShopifyInventorySyncPayload struct {
-	IntegrationID string `json:"integration_id"`
-	ShopDomain    string `json:"shop_domain"`
-	AccessToken   string `json:"access_token"`
+	IntegrationID id.ID[id.PlatformIntegration] `json:"integration_id"`
 }
 
 // NewShopifyStoreSyncTask creates a new task for syncing Shopify store data
-func NewShopifyStoreSyncTask(userID, shopName, token string) (*asynq.Task, error) {
+func NewShopifyStoreSyncTask(userID id.ID[id.User], shopID id.ID[id.ShopifyStore]) (*asynq.Task, error) {
 	payload := ShopifyStoreSyncPayload{
-		UserID:   userID,
-		ShopName: shopName,
-		Token:    token,
+		UserID: userID,
+		ShopID: shopID,
 	}
 
 	data, err := json.Marshal(payload)
@@ -46,11 +43,9 @@ func NewShopifyStoreSyncTask(userID, shopName, token string) (*asynq.Task, error
 }
 
 // NewShopifyInventorySyncTask creates a new task for syncing Shopify inventory data
-func NewShopifyInventorySyncTask(integrationID, shopDomain, accessToken string) (*asynq.Task, error) {
+func NewShopifyInventorySyncTask(integrationID id.ID[id.PlatformIntegration]) (*asynq.Task, error) {
 	payload := ShopifyInventorySyncPayload{
 		IntegrationID: integrationID,
-		ShopDomain:    shopDomain,
-		AccessToken:   accessToken,
 	}
 
 	data, err := json.Marshal(payload)
@@ -62,11 +57,9 @@ func NewShopifyInventorySyncTask(integrationID, shopDomain, accessToken string) 
 }
 
 // NewShopifyLocationsSyncTask creates a new task for syncing Shopify locations
-func NewShopifyLocationsSyncTask(integrationID, shopDomain, accessToken string) (*asynq.Task, error) {
+func NewShopifyLocationsSyncTask(integrationID id.ID[id.PlatformIntegration]) (*asynq.Task, error) {
 	payload := ShopifyInventorySyncPayload{
 		IntegrationID: integrationID,
-		ShopDomain:    shopDomain,
-		AccessToken:   accessToken,
 	}
 
 	data, err := json.Marshal(payload)
@@ -78,11 +71,9 @@ func NewShopifyLocationsSyncTask(integrationID, shopDomain, accessToken string) 
 }
 
 // NewShopifyProductsSyncTask creates a new task for syncing Shopify products
-func NewShopifyProductsSyncTask(integrationID, shopDomain, accessToken string) (*asynq.Task, error) {
+func NewShopifyProductsSyncTask(integrationID id.ID[id.PlatformIntegration]) (*asynq.Task, error) {
 	payload := ShopifyInventorySyncPayload{
 		IntegrationID: integrationID,
-		ShopDomain:    shopDomain,
-		AccessToken:   accessToken,
 	}
 
 	data, err := json.Marshal(payload)
@@ -94,11 +85,9 @@ func NewShopifyProductsSyncTask(integrationID, shopDomain, accessToken string) (
 }
 
 // NewShopifyOrdersSyncTask creates a new task for syncing Shopify orders
-func NewShopifyOrdersSyncTask(integrationID, shopDomain, accessToken string) (*asynq.Task, error) {
+func NewShopifyOrdersSyncTask(integrationID id.ID[id.PlatformIntegration]) (*asynq.Task, error) {
 	payload := ShopifyInventorySyncPayload{
 		IntegrationID: integrationID,
-		ShopDomain:    shopDomain,
-		AccessToken:   accessToken,
 	}
 
 	data, err := json.Marshal(payload)

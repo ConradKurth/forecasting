@@ -21,6 +21,8 @@ type Database interface {
 	GetUsers() users.Querier
 	GetShopify() shopify.Querier
 	GetCore() core.Querier
+	WithTx(ctx context.Context, fn func(*TxDB) error) error
+	Close()
 }
 
 // DB holds all repository implementations

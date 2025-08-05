@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/ConradKurth/forecasting/backend/internal/config"
-	"github.com/ConradKurth/forecasting/backend/internal/factory"
+	"github.com/ConradKurth/forecasting/backend/internal/interfaces"
 	"github.com/ConradKurth/forecasting/backend/pkg/logger"
 	"github.com/hibiken/asynq"
 )
@@ -13,11 +13,12 @@ import (
 // Server wraps asynq.Server with our configuration
 type Server struct {
 	server *asynq.Server
+	queue  *asynq.Client
 	mux    *asynq.ServeMux
 }
 
 // NewServer creates a new worker server with proper configuration and middleware
-func NewServer(serviceFactory *factory.ServiceFactory) *Server {
+func NewServer(shopifyManager interfaces.ShopifyManager, syncManager interfaces.InventorySyncManager) *Server {
 	// Create Redis connection config
 	redisOpt := asynq.RedisClientOpt{
 		Addr: config.Values.Redis.URL,
@@ -42,15 +43,15 @@ func NewServer(serviceFactory *factory.ServiceFactory) *Server {
 
 	// Create multiplexer with middleware
 	mux := asynq.NewServeMux()
-	
+
 	// Add logging middleware
 	mux.Use(loggingMiddleware())
-	
+
 	// Add recovery middleware
 	mux.Use(recoveryMiddleware())
 
 	// Create worker and register handlers
-	worker := New(serviceFactory)
+	worker := New(shopifyManager, syncManager)
 	worker.RegisterHandlers(mux)
 
 	return &Server{
@@ -74,18 +75,18 @@ func loggingMiddleware() asynq.MiddlewareFunc {
 	return func(next asynq.Handler) asynq.Handler {
 		return asynq.HandlerFunc(func(ctx context.Context, task *asynq.Task) error {
 			start := time.Now()
-			
+
 			logger.Info("Started processing task", "type", task.Type(), "payload", string(task.Payload()))
-			
+
 			err := next.ProcessTask(ctx, task)
-			
+
 			duration := time.Since(start)
 			if err != nil {
 				logger.Error("Failed to process task", "type", task.Type(), "duration", duration, "error", err)
 			} else {
 				logger.Info("Successfully processed task", "type", task.Type(), "duration", duration)
 			}
-			
+
 			return err
 		})
 	}
@@ -101,7 +102,7 @@ func recoveryMiddleware() asynq.MiddlewareFunc {
 					err = asynq.SkipRetry
 				}
 			}()
-			
+
 			return next.ProcessTask(ctx, task)
 		})
 	}

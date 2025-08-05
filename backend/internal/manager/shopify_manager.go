@@ -4,52 +4,47 @@ import (
 	"context"
 	"time"
 
+	"github.com/ConradKurth/forecasting/backend/internal/crypto"
 	"github.com/ConradKurth/forecasting/backend/internal/db"
-	"github.com/ConradKurth/forecasting/backend/internal/factory"
-	"github.com/ConradKurth/forecasting/backend/internal/service"
-	"github.com/ConradKurth/forecasting/backend/internal/worker"
+	"github.com/ConradKurth/forecasting/backend/internal/interfaces"
+	"github.com/ConradKurth/forecasting/backend/internal/repository/shopify"
+	"github.com/ConradKurth/forecasting/backend/internal/repository/users"
 	"github.com/ConradKurth/forecasting/backend/pkg/id"
 	"github.com/ConradKurth/forecasting/backend/pkg/logger"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pkg/errors"
 )
 
-// ShopifyManager orchestrates operations across user, shopify store, and shopify user services.
+// ShopifyManager orchestrates operations across user, shopify store, and shopify user repositories.
 // It ensures data consistency by wrapping multi-table operations in database transactions.
 //
 // Transaction Strategy:
 // - Write operations (CreateOrUpdateShopifyIntegration) use transactions to ensure atomicity
 // - Read operations that need consistency (GetShopifyIntegration, ListUserShopifyIntegrations) use read-only transactions
-// - Single-table operations can use the regular services without transactions
+// - Single-table operations can use the regular queries without transactions
 //
-// Service Dependencies:
-// The manager uses interface-based services for dependency injection and testability.
-// It maintains a database reference for transaction management. Services are created
-// on-demand from the appropriate database connection (regular or transactional).
+// Repository Dependencies:
+// The manager works directly with repository query interfaces.
+// It maintains a database reference for transaction management. Queries are accessed
+// directly from the database connection (regular or transactional).
 type ShopifyManager struct {
-	database *db.DB
-	services *factory.ServiceInterfaces
-	queue    worker.Queue
+	database db.Database
+	queue    interfaces.Queue
 }
 
-// NewShopifyManager creates a new ShopifyManager instance with default services
-func NewShopifyManager(database *db.DB, services *factory.ServiceInterfaces, queue worker.Queue) *ShopifyManager {
+// NewShopifyManager creates a new ShopifyManager instance
+func NewShopifyManager(database db.Database, queue interfaces.Queue) *ShopifyManager {
 	return &ShopifyManager{
 		database: database,
-		services: services,
 		queue:    queue,
 	}
 }
 
-// withTxServices creates transactional service interfaces from a transaction.
-func (m *ShopifyManager) withTxServices(tx *db.TxDB) *factory.ServiceInterfaces {
-	return factory.NewServiceInterfacesFromTx(tx)
-}
-
 // ShopifyIntegration represents the complete shopify integration data
 type ShopifyIntegration struct {
-	User        *service.User         `json:"user"`
-	Store       *service.ShopifyStore `json:"store"`
-	ShopifyUser *service.ShopifyUser  `json:"shopify_user"`
+	User        *users.User         `json:"user"`
+	Store       *shopify.ShopifyStore `json:"store"`
+	ShopifyUser *shopify.ShopifyUser  `json:"shopify_user"`
 	AccessToken string                `json:"-"` // Don't serialize access token
 }
 
@@ -65,44 +60,57 @@ func (m *ShopifyManager) CreateOrUpdateShopifyIntegration(ctx context.Context, p
 	var result *ShopifyIntegration
 
 	err := m.database.WithTx(ctx, func(txDB *db.TxDB) error {
-		// Create transactional services
-		services := m.withTxServices(txDB)
-
 		// Step 1: Create or get the user
-		user, err := m.ensureUserTx(ctx, services.User, params.UserID)
+		user, err := m.ensureUserTx(ctx, txDB.GetUsers(), params.UserID)
 		if err != nil {
 			return errors.Wrap(err, "failed to ensure user exists")
 		}
 
 		// Step 2: Create or update the shopify store
-		store, err := services.ShopifyStore.CreateOrUpdateStore(
-			ctx,
-			params.ShopDomain,
-			params.ShopName,
-			params.Timezone,
-			params.Currency,
-		)
+		var shopName, timezone, currency pgtype.Text
+		if params.ShopName != nil {
+			shopName = pgtype.Text{String: *params.ShopName, Valid: true}
+		}
+		if params.Timezone != nil {
+			timezone = pgtype.Text{String: *params.Timezone, Valid: true}
+		}
+		if params.Currency != nil {
+			currency = pgtype.Text{String: *params.Currency, Valid: true}
+		}
+
+		store, err := txDB.GetShopify().CreateOrUpdateShopifyStore(ctx, shopify.CreateOrUpdateShopifyStoreParams{
+			ID:         id.NewGeneration[id.ShopifyStore](),
+			ShopDomain: params.ShopDomain,
+			ShopName:   shopName,
+			Timezone:   timezone,
+			Currency:   currency,
+		})
 		if err != nil {
 			return errors.Wrap(err, "failed to create or update shopify store")
 		}
 
 		// Step 3: Create or update the shopify user with access token
-		shopifyUser, err := services.ShopifyUser.CreateOrUpdateShopifyUser(
-			ctx,
-			user.ID,
-			store.ID,
-			params.AccessToken,
-			params.Scope,
-			params.ExpiresAt,
-		)
+		var expiresAt pgtype.Timestamp
+		if params.ExpiresAt != nil {
+			expiresAt = pgtype.Timestamp{Time: *params.ExpiresAt, Valid: true}
+		}
+
+		shopifyUser, err := txDB.GetShopify().CreateOrUpdateShopifyUser(ctx, shopify.CreateOrUpdateShopifyUserParams{
+			ID:             id.NewGeneration[id.ShopifyUser](),
+			UserID:         params.UserID,
+			ShopifyStoreID: store.ID,
+			AccessToken:    crypto.EncryptedSecret(params.AccessToken),
+			Scope:          params.Scope,
+			ExpiresAt:      expiresAt,
+		})
 		if err != nil {
 			return errors.Wrap(err, "failed to create or update shopify user")
 		}
 
 		result = &ShopifyIntegration{
-			User:        user,
-			Store:       store,
-			ShopifyUser: shopifyUser,
+			User:        &user,
+			Store:       &store,
+			ShopifyUser: &shopifyUser,
 			AccessToken: params.AccessToken,
 		}
 
@@ -114,7 +122,7 @@ func (m *ShopifyManager) CreateOrUpdateShopifyIntegration(ctx context.Context, p
 	}
 
 	// Enqueue Shopify store sync task after successful integration creation
-	err = m.queue.EnqueueShopifyStoreSync(ctx, params.UserID.String(), params.ShopDomain, params.AccessToken)
+	err = m.queue.EnqueueShopifyStoreSync(ctx, params.UserID.String(), result.Store.ID.String(), params.AccessToken)
 	if err != nil {
 		// Log the error but don't fail the integration creation
 		logger.Error("Failed to enqueue Shopify store sync task", "user_id", params.UserID, "shop_domain", params.ShopDomain, "error", err)
@@ -138,98 +146,102 @@ type CreateShopifyIntegrationParams struct {
 // GetShopifyIntegration retrieves the complete shopify integration for a user and shop domain
 // Uses a read-only transaction to ensure data consistency
 func (m *ShopifyManager) GetShopifyIntegration(ctx context.Context, userID id.ID[id.User], shopDomain string) (*ShopifyIntegration, error) {
-	var result *ShopifyIntegration
-
-	services := m.services
-
 	// Get the user
-	user, err := services.User.GetUser(ctx, userID)
+	user, err := m.database.GetUsers().GetUserByID(ctx, userID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get user")
 	}
-	if user == nil {
-		return nil, errors.New("user not found")
-	}
 
 	// Get the store
-	store, err := services.ShopifyStore.GetStoreByDomain(ctx, shopDomain)
+	store, err := m.database.GetShopify().GetShopifyStoreByDomain(ctx, shopDomain)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get shopify store")
 	}
-	if store == nil {
-		return nil, errors.New("shopify store not found")
-	}
 
 	// Get the shopify user
-	shopifyUser, err := services.ShopifyUser.GetShopifyUserByUserAndDomain(ctx, userID, shopDomain)
+	shopifyUser, err := m.database.GetShopify().GetShopifyUserByUserAndStore(ctx, shopify.GetShopifyUserByUserAndStoreParams{
+		UserID:         userID,
+		ShopifyStoreID: store.ID,
+	})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get shopify user")
 	}
-	if shopifyUser == nil {
-		return nil, errors.New("shopify user not found")
-	}
 
-	// Get the access token
-	accessToken, err := services.ShopifyUser.GetShopifyAccessToken(ctx, userID, shopDomain)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get shopify access token")
-	}
-
-	result = &ShopifyIntegration{
-		User:        user,
-		Store:       store,
-		ShopifyUser: shopifyUser,
-		AccessToken: accessToken,
+	result := &ShopifyIntegration{
+		User:        &user,
+		Store:       &store,
+		ShopifyUser: &shopifyUser,
+		AccessToken: shopifyUser.AccessToken.String(),
 	}
 
 	return result, nil
-
 }
 
 // ValidateShopifyIntegration checks if a complete shopify integration exists for a user and shop domain
 func (m *ShopifyManager) ValidateShopifyIntegration(ctx context.Context, userID id.ID[id.User], shopDomain string) (bool, error) {
-
 	// Check if user exists
-	userExists, err := m.services.User.ValidateUser(ctx, userID)
-	if err != nil || !userExists {
-		return false, err
+	_, err := m.database.GetUsers().GetUserByID(ctx, userID)
+	if err != nil {
+		return false, nil // User doesn't exist
+	}
+
+	// Check if shopify store exists
+	store, err := m.database.GetShopify().GetShopifyStoreByDomain(ctx, shopDomain)
+	if err != nil {
+		return false, nil // Store doesn't exist
 	}
 
 	// Check if shopify user exists
-	shopifyUserExists, err := m.services.ShopifyUser.ValidateShopifyUser(ctx, userID, shopDomain)
-	if err != nil || !shopifyUserExists {
-		return false, err
+	_, err = m.database.GetShopify().GetShopifyUserByUserAndStore(ctx, shopify.GetShopifyUserByUserAndStoreParams{
+		UserID:         userID,
+		ShopifyStoreID: store.ID,
+	})
+	if err != nil {
+		return false, nil // Shopify user doesn't exist
 	}
 
-	return true, err
+	return true, nil
 }
 
 // GetShopifyAccessToken is a convenience method to get just the access token
 func (m *ShopifyManager) GetShopifyAccessToken(ctx context.Context, userID id.ID[id.User], shopDomain string) (string, error) {
-	services := m.services
-
-	token, err := services.ShopifyUser.GetShopifyAccessToken(ctx, userID, shopDomain)
+	// Get the store
+	store, err := m.database.GetShopify().GetShopifyStoreByDomain(ctx, shopDomain)
 	if err != nil {
-		return "", errors.Wrap(err, "could not get the shopify token")
+		return "", errors.Wrap(err, "failed to get shopify store")
 	}
-	return token, err
+
+	// Get the shopify user
+	shopifyUser, err := m.database.GetShopify().GetShopifyUserByUserAndStore(ctx, shopify.GetShopifyUserByUserAndStoreParams{
+		UserID:         userID,
+		ShopifyStoreID: store.ID,
+	})
+	if err != nil {
+		return "", errors.Wrap(err, "could not get the shopify user")
+	}
+
+	return shopifyUser.AccessToken.String(), nil
 }
 
 // ensureUserTx creates a user if it doesn't exist, or returns the existing user (transactional version)
-func (m *ShopifyManager) ensureUserTx(ctx context.Context, userService factory.UserServiceInterface, userID id.ID[id.User]) (*service.User, error) {
+func (m *ShopifyManager) ensureUserTx(ctx context.Context, userQueries users.Querier, userID id.ID[id.User]) (users.User, error) {
 	// Try to get the existing user
-	user, err := userService.GetUser(ctx, userID)
+	user, err := userQueries.GetUserByID(ctx, userID)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to check if user exists")
-	}
-
-	// If user doesn't exist, create it
-	if user == nil {
-		user, err = userService.CreateUser(ctx, userID)
+		// If user doesn't exist, create it
+		user, err = userQueries.CreateUser(ctx, userID)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to create user")
+			return users.User{}, errors.Wrap(err, "failed to create user")
 		}
 	}
 
 	return user, nil
+}
+
+// SyncStoreInfo updates store information by fetching from Shopify API
+func (m *ShopifyManager) SyncStoreInfo(ctx context.Context, userID id.ID[id.User], shopID id.ID[id.ShopifyStore]) error {
+	// For now, just log that the sync was called
+	// The actual Shopify API integration would go here
+	logger.Info("Store sync requested", "user_id", userID, "shop_id", shopID)
+	return nil
 }
