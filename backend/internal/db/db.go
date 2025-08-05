@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ConradKurth/forecasting/backend/internal/config"
+	"github.com/ConradKurth/forecasting/backend/internal/repository/core"
 	"github.com/ConradKurth/forecasting/backend/internal/repository/shopify"
 	"github.com/ConradKurth/forecasting/backend/internal/repository/users"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -19,6 +20,7 @@ import (
 type Database interface {
 	GetUsers() users.Querier
 	GetShopify() shopify.Querier
+	GetCore() core.Querier
 }
 
 // DB holds all repository implementations
@@ -27,6 +29,7 @@ type DB struct {
 	// Repository implementations
 	Users   users.Querier
 	Shopify shopify.Querier
+	Core    core.Querier
 }
 
 // GetUsers returns the users repository
@@ -37,6 +40,11 @@ func (db *DB) GetUsers() users.Querier {
 // GetShopify returns the shopify repository
 func (db *DB) GetShopify() shopify.Querier {
 	return db.Shopify
+}
+
+// GetCore returns the core repository
+func (db *DB) GetCore() core.Querier {
+	return db.Core
 }
 
 // New creates a new database connection pool using DATABASE_URL from config
@@ -104,11 +112,13 @@ func NewWithURL(databaseURL string) (*DB, error) {
 	// Initialize repositories
 	userQueries := users.New(pool)
 	shopifyQueries := shopify.New(pool)
+	coreQueries := core.New(pool)
 
 	return &DB{
 		pool:    pool,
 		Users:   userQueries,
 		Shopify: shopifyQueries,
+		Core:    coreQueries,
 	}, nil
 }
 
@@ -132,6 +142,7 @@ func (db *DB) WithTx(ctx context.Context, fn func(*TxDB) error) error {
 	txDB := &TxDB{
 		Users:   users.New(tx),
 		Shopify: shopify.New(tx),
+		Core:    core.New(tx),
 	}
 
 	defer func() {
@@ -159,6 +170,7 @@ func (db *DB) WithTx(ctx context.Context, fn func(*TxDB) error) error {
 type TxDB struct {
 	Users   users.Querier
 	Shopify shopify.Querier
+	Core    core.Querier
 }
 
 // GetUsers returns the users repository
@@ -169,4 +181,9 @@ func (txDB *TxDB) GetUsers() users.Querier {
 // GetShopify returns the shopify repository
 func (txDB *TxDB) GetShopify() shopify.Querier {
 	return txDB.Shopify
+}
+
+// GetCore returns the core repository
+func (txDB *TxDB) GetCore() core.Querier {
+	return txDB.Core
 }

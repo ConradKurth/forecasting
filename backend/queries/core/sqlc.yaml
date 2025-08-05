@@ -1,0 +1,112 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: 
+      - "platform_integrations.sql"
+      - "locations.sql"
+      - "products.sql"
+      - "product_variants.sql"
+      - "inventory_items.sql"
+      - "inventory_levels.sql"
+      - "orders.sql"
+      - "order_line_items.sql"
+      - "sync_states.sql"
+    schema: "../../migrations"
+    gen:
+      go:
+        package: "core"
+        out: "../../internal/repository/core"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_interface: true
+        emit_exact_table_names: false
+        emit_empty_slices: true
+        overrides:
+          - column: "platform_integrations.id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.PlatformIntegration]"
+          - column: "platform_integrations.shop_id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.ShopifyStore]"
+          - column: "locations.id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.Location]"
+          - column: "locations.integration_id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.PlatformIntegration]"
+          - column: "products.id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.Product]"
+          - column: "products.integration_id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.PlatformIntegration]"
+          - column: "product_variants.id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.ProductVariant]"
+          - column: "product_variants.product_id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.Product]"
+          - column: "inventory_items.id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.InventoryItem]"
+          - column: "inventory_items.integration_id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.PlatformIntegration]"
+          - column: "inventory_levels.id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.InventoryLevel]"
+          - column: "inventory_levels.inventory_item_id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.InventoryItem]"
+          - column: "inventory_levels.location_id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.Location]"
+          - column: "orders.id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.Order]"
+          - column: "orders.integration_id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.PlatformIntegration]"
+          - column: "order_line_items.id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.OrderLineItem]"
+          - column: "order_line_items.order_id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.Order]"
+          - column: "order_line_items.product_id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.Product]"
+          - column: "order_line_items.variant_id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.ProductVariant]"
+          - column: "order_line_items.inventory_item_id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.InventoryItem]"
+          - column: "sync_states.id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.SyncState]"
+          - column: "sync_states.integration_id"
+            go_type:
+              import: "github.com/ConradKurth/forecasting/backend/pkg/id"
+              type: "ID[id.PlatformIntegration]"

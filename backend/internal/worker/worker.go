@@ -7,6 +7,7 @@ import (
 
 	"github.com/ConradKurth/forecasting/backend/internal/factory"
 	"github.com/ConradKurth/forecasting/backend/internal/shopify"
+	"github.com/ConradKurth/forecasting/backend/pkg/id"
 	"github.com/ConradKurth/forecasting/backend/pkg/logger"
 	"github.com/hibiken/asynq"
 )
@@ -26,6 +27,10 @@ func New(serviceFactory *factory.ServiceFactory) *Worker {
 // RegisterHandlers registers all task handlers with the given mux
 func (w *Worker) RegisterHandlers(mux *asynq.ServeMux) {
 	mux.HandleFunc(TypeShopifyStoreSync, w.HandleShopifyStoreSync)
+	mux.HandleFunc(TypeShopifyInventorySync, w.HandleShopifyInventorySync)
+	mux.HandleFunc(TypeShopifyLocationsSync, w.HandleShopifyLocationsSync)
+	mux.HandleFunc(TypeShopifyProductsSync, w.HandleShopifyProductsSync)
+	mux.HandleFunc(TypeShopifyOrdersSync, w.HandleShopifyOrdersSync)
 }
 
 // HandleShopifyStoreSync processes Shopify store synchronization tasks
@@ -35,24 +40,41 @@ func (w *Worker) HandleShopifyStoreSync(ctx context.Context, t *asynq.Task) erro
 		return fmt.Errorf("failed to unmarshal shopify store sync payload: %w", err)
 	}
 
-	// Create Shopify API client
-	shopifyClient, err := shopify.NewClient(payload.ShopName, payload.Token)
-	if err != nil {
-		return fmt.Errorf("failed to create Shopify client: %w", err)
+	// Fetch shop info using Shopify API client
+	shopifyClient := shopify.NewClient(payload.ShopName, payload.Token)
+
+	var shopInfo struct {
+		Name     string
+		Currency string
+		Timezone string
 	}
 
-	// Fetch shop information from Shopify API
-	logger.Info("Fetching shop info from Shopify API", "shop", payload.ShopName, "user_id", payload.UserID)
-	shopInfo, err := shopifyClient.GetShopInfo(ctx)
+	shop, err := shopifyClient.GetShop(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to fetch shop info from Shopify API: %w", err)
+		logger.Error("Failed to fetch shop info", "shop", payload.ShopName, "error", err)
+		// Use fallback shop info
+		shopInfo = struct {
+			Name     string
+			Currency string
+			Timezone string
+		}{
+			Name:     payload.ShopName,
+			Currency: "USD",
+			Timezone: "UTC",
+		}
+		logger.Info("Using fallback shop info", "shop", payload.ShopName)
+	} else {
+		// Use fetched shop info from Shopify
+		shopInfo = struct {
+			Name     string
+			Currency string
+			Timezone string
+		}{
+			Name:     shop.Name,
+			Currency: shop.Currency,
+			Timezone: shop.IanaTimezone,
+		}
 	}
-
-	logger.Info("Successfully fetched shop info", 
-		"shop", payload.ShopName, 
-		"name", shopInfo.Name, 
-		"currency", shopInfo.Currency, 
-		"timezone", shopInfo.Timezone)
 
 	// Get Shopify store service
 	shopifyStoreService := w.serviceFactory.CreateShopifyStoreService()
@@ -69,12 +91,72 @@ func (w *Worker) HandleShopifyStoreSync(ctx context.Context, t *asynq.Task) erro
 		return fmt.Errorf("failed to update store in database: %w", err)
 	}
 
-	logger.Info("Successfully synced Shopify store data", 
-		"shop", payload.ShopName, 
-		"user_id", payload.UserID,
-		"name", shopInfo.Name, 
-		"currency", shopInfo.Currency, 
-		"timezone", shopInfo.Timezone)
-
 	return nil
+}
+
+// HandleShopifyInventorySync processes full Shopify inventory synchronization tasks
+func (w *Worker) HandleShopifyInventorySync(ctx context.Context, t *asynq.Task) error {
+	var payload ShopifyInventorySyncPayload
+	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+		return fmt.Errorf("failed to unmarshal shopify inventory sync payload: %w", err)
+	}
+
+	integrationID, err := id.ParseTyped[id.PlatformIntegration](payload.IntegrationID)
+	if err != nil {
+		return fmt.Errorf("failed to parse integration ID: %w", err)
+	}
+
+	coreInventoryService := w.serviceFactory.CreateCoreInventoryService()
+	return coreInventoryService.SyncShopifyData(ctx, integrationID, payload.ShopDomain, payload.AccessToken)
+}
+
+// HandleShopifyLocationsSync processes Shopify locations synchronization tasks
+func (w *Worker) HandleShopifyLocationsSync(ctx context.Context, t *asynq.Task) error {
+	var payload ShopifyInventorySyncPayload
+	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+		return fmt.Errorf("failed to unmarshal shopify locations sync payload: %w", err)
+	}
+
+	integrationID, err := id.ParseTyped[id.PlatformIntegration](payload.IntegrationID)
+	if err != nil {
+		return fmt.Errorf("failed to parse integration ID: %w", err)
+	}
+
+	coreInventoryService := w.serviceFactory.CreateCoreInventoryService()
+	coreInventoryService.SetShopifyClient(shopify.NewClient(payload.ShopDomain, payload.AccessToken))
+	return coreInventoryService.SyncLocations(ctx, integrationID)
+}
+
+// HandleShopifyProductsSync processes Shopify products synchronization tasks
+func (w *Worker) HandleShopifyProductsSync(ctx context.Context, t *asynq.Task) error {
+	var payload ShopifyInventorySyncPayload
+	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+		return fmt.Errorf("failed to unmarshal shopify products sync payload: %w", err)
+	}
+
+	integrationID, err := id.ParseTyped[id.PlatformIntegration](payload.IntegrationID)
+	if err != nil {
+		return fmt.Errorf("failed to parse integration ID: %w", err)
+	}
+
+	coreInventoryService := w.serviceFactory.CreateCoreInventoryService()
+	coreInventoryService.SetShopifyClient(shopify.NewClient(payload.ShopDomain, payload.AccessToken))
+	return coreInventoryService.SyncProducts(ctx, integrationID)
+}
+
+// HandleShopifyOrdersSync processes Shopify orders synchronization tasks
+func (w *Worker) HandleShopifyOrdersSync(ctx context.Context, t *asynq.Task) error {
+	var payload ShopifyInventorySyncPayload
+	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+		return fmt.Errorf("failed to unmarshal shopify orders sync payload: %w", err)
+	}
+
+	integrationID, err := id.ParseTyped[id.PlatformIntegration](payload.IntegrationID)
+	if err != nil {
+		return fmt.Errorf("failed to parse integration ID: %w", err)
+	}
+
+	coreInventoryService := w.serviceFactory.CreateCoreInventoryService()
+	coreInventoryService.SetShopifyClient(shopify.NewClient(payload.ShopDomain, payload.AccessToken))
+	return coreInventoryService.SyncOrders(ctx, integrationID)
 }

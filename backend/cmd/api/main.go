@@ -12,6 +12,7 @@ import (
 	"github.com/ConradKurth/forecasting/backend/internal/db"
 	"github.com/ConradKurth/forecasting/backend/internal/http/dashboard"
 	"github.com/ConradKurth/forecasting/backend/internal/http/oauth"
+	"github.com/ConradKurth/forecasting/backend/internal/http/sync"
 	"github.com/ConradKurth/forecasting/backend/internal/manager"
 	"github.com/ConradKurth/forecasting/backend/internal/worker"
 	"github.com/ConradKurth/forecasting/backend/pkg/logger"
@@ -50,6 +51,7 @@ func main() {
 
 	// Initialize managers
 	shopifyManager := manager.NewShopifyManager(database, workerQueue)
+	syncManager := manager.NewInventorySyncManager(database, shopifyManager)
 
 	r := chi.NewRouter()
 
@@ -76,6 +78,7 @@ func main() {
 	// Initialize routes
 	oauth.InitRoutes(r, shopifyManager)
 	dashboard.InitRoutes(r, shopifyManager)
+	sync.InitRoutes(r, syncManager)
 
 	// Create HTTP server
 	server := &http.Server{

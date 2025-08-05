@@ -2,6 +2,7 @@ package factory
 
 import (
 	"github.com/ConradKurth/forecasting/backend/internal/db"
+	"github.com/ConradKurth/forecasting/backend/internal/repository/core"
 	"github.com/ConradKurth/forecasting/backend/internal/repository/shopify"
 	"github.com/ConradKurth/forecasting/backend/internal/repository/users"
 	"github.com/ConradKurth/forecasting/backend/internal/service"
@@ -12,6 +13,7 @@ import (
 type DatabaseConnection interface {
 	GetUsers() users.Querier
 	GetShopify() shopify.Querier
+	GetCore() core.Querier
 }
 
 // ServiceFactory creates services from database connections
@@ -40,6 +42,11 @@ func (f *ServiceFactory) CreateShopifyUserService() *service.ShopifyUserService 
 	return service.NewShopifyUserService(f.dbConn.GetShopify())
 }
 
+// CreateCoreInventoryService creates a CoreInventoryService from the current database connection
+func (f *ServiceFactory) CreateCoreInventoryService() *service.CoreInventoryService {
+	return service.NewCoreInventoryService(f.dbConn.GetCore())
+}
+
 // Interface-based service creation methods for dependency injection
 
 // CreateUserServiceInterface creates a UserService and returns it as an interface
@@ -55,6 +62,16 @@ func (f *ServiceFactory) CreateShopifyStoreServiceInterface() ShopifyStoreServic
 // CreateShopifyUserServiceInterface creates a ShopifyUserService and returns it as an interface
 func (f *ServiceFactory) CreateShopifyUserServiceInterface() ShopifyUserServiceInterface {
 	return f.CreateShopifyUserService()
+}
+
+// CreateCoreService creates a CoreService from the current database connection
+func (f *ServiceFactory) CreateCoreService() *service.CoreService {
+	return service.NewCoreService(f.dbConn.GetCore())
+}
+
+// CreateCoreServiceInterface creates a CoreService and returns it as an interface
+func (f *ServiceFactory) CreateCoreServiceInterface() CoreServiceInterface {
+	return f.CreateCoreService()
 }
 
 // Services is a convenience struct that holds all service instances (concrete types)
@@ -79,24 +96,33 @@ func (f *ServiceFactory) CreateAllServiceInterfaces() *ServiceInterfaces {
 		User:         f.CreateUserServiceInterface(),
 		ShopifyStore: f.CreateShopifyStoreServiceInterface(),
 		ShopifyUser:  f.CreateShopifyUserServiceInterface(),
+		Core:         f.CreateCoreServiceInterface(),
 	}
 }
 
-// Convenience functions for common patterns
-
-// NewServicesFromDB creates services from a regular database connection
-func NewServicesFromDB(database *db.DB) *Services {
-	factory := NewServiceFactory(database)
-	return factory.CreateAllServices()
+// ServiceInterfaceFactory provides methods to create service interfaces from different database connections
+type ServiceInterfaceFactory struct {
+	database *db.DB
 }
 
-// NewServicesFromTx creates services from a transactional database connection
-func NewServicesFromTx(txDB *db.TxDB) *Services {
+// NewServiceInterfaceFactory creates a new ServiceInterfaceFactory
+func NewServiceInterfaceFactory(database *db.DB) *ServiceInterfaceFactory {
+	return &ServiceInterfaceFactory{
+		database: database,
+	}
+}
+
+// FromDB creates service interfaces from the regular database connection
+func (sif *ServiceInterfaceFactory) FromDB() *ServiceInterfaces {
+	factory := NewServiceFactory(sif.database)
+	return factory.CreateAllServiceInterfaces()
+}
+
+// FromTx creates service interfaces from a transactional database connection
+func (sif *ServiceInterfaceFactory) FromTx(txDB *db.TxDB) *ServiceInterfaces {
 	factory := NewServiceFactory(txDB)
-	return factory.CreateAllServices()
+	return factory.CreateAllServiceInterfaces()
 }
-
-// Interface-based convenience functions for dependency injection
 
 // NewServiceInterfacesFromDB creates service interfaces from a regular database connection
 func NewServiceInterfacesFromDB(database *db.DB) *ServiceInterfaces {

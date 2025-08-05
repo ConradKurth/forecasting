@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/ConradKurth/forecasting/backend/internal/repository/core"
 	"github.com/ConradKurth/forecasting/backend/internal/service"
 	"github.com/ConradKurth/forecasting/backend/pkg/id"
 )
@@ -34,9 +35,18 @@ type ShopifyUserServiceInterface interface {
 	ValidateShopifyUser(ctx context.Context, userID id.ID[id.User], shopDomain string) (bool, error)
 }
 
+// CoreServiceInterface defines the contract for core platform operations
+type CoreServiceInterface interface {
+	GetPlatformIntegrationByShopAndType(ctx context.Context, arg core.GetPlatformIntegrationByShopAndTypeParams) (core.PlatformIntegration, error)
+	CreatePlatformIntegration(ctx context.Context, arg core.CreatePlatformIntegrationParams) (core.PlatformIntegration, error)
+	GetSyncState(ctx context.Context, arg core.GetSyncStateParams) (core.SyncState, error)
+	GetSyncStatesByIntegrationID(ctx context.Context, integrationID id.ID[id.PlatformIntegration]) ([]core.SyncState, error)
+}
+
 // ServiceInterfaces holds all service interfaces for dependency injection
 type ServiceInterfaces struct {
 	User         UserServiceInterface
 	ShopifyStore ShopifyStoreServiceInterface
 	ShopifyUser  ShopifyUserServiceInterface
+	Core         CoreServiceInterface
 }

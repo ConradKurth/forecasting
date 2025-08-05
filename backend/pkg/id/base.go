@@ -90,3 +90,8 @@ func (b ID[T]) validate() error {
 	}
 	return fmt.Errorf("Invalid ID prefix: %v, %v", b.String(), resource.Prefix())
 }
+
+// ParseTyped parses a string into a typed ID
+func ParseTyped[T Resource](s string) (ID[T], error) {
+	return New[T](s)
+}
