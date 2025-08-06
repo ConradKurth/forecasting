@@ -38,3 +38,6 @@ DO UPDATE SET
     inventory_item_id = EXCLUDED.inventory_item_id,
     updated_at = NOW()
 RETURNING id, product_id, external_id, sku, price, inventory_item_id, created_at, updated_at;
+
+-- name: InsertProductVariantsBatch :copyfrom
+INSERT INTO product_variants (id, product_id, external_id, sku, price, inventory_item_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);

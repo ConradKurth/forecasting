@@ -79,9 +79,16 @@ type ShopifyOrderLineItem struct {
 	Price     string `json:"price"`
 }
 
+// PaginationInfo holds pagination information
+type PaginationInfo struct {
+	NextPageInfo     string
+	PreviousPageInfo string
+}
+
 // API Response wrappers
 type ProductsResponse struct {
-	Products []ShopifyProduct `json:"products"`
+	Products   []ShopifyProduct `json:"products"`
+	Pagination PaginationInfo   `json:"-"`
 }
 
 type ProductResponse struct {
@@ -90,18 +97,26 @@ type ProductResponse struct {
 
 type InventoryLevelsResponse struct {
 	InventoryLevels []ShopifyInventoryLevel `json:"inventory_levels"`
+	Pagination      PaginationInfo          `json:"-"`
 }
 
 type InventoryItemResponse struct {
 	InventoryItem ShopifyInventoryItem `json:"inventory_item"`
 }
 
+type InventoryItemsResponse struct {
+	InventoryItems []ShopifyInventoryItem `json:"inventory_items"`
+	Pagination     PaginationInfo         `json:"-"`
+}
+
 type LocationsResponse struct {
-	Locations []ShopifyLocation `json:"locations"`
+	Locations  []ShopifyLocation `json:"locations"`
+	Pagination PaginationInfo    `json:"-"`
 }
 
 type OrdersResponse struct {
-	Orders []ShopifyOrder `json:"orders"`
+	Orders     []ShopifyOrder `json:"orders"`
+	Pagination PaginationInfo `json:"-"`
 }
 
 type OrderResponse struct {

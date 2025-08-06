@@ -180,6 +180,17 @@ func (q *Queries) GetProductVariantsByProductID(ctx context.Context, productID i
 	return items, nil
 }
 
+type InsertProductVariantsBatchParams struct {
+	ID              id.ID[id.ProductVariant] `json:"id"`
+	ProductID       id.ID[id.Product]        `json:"product_id"`
+	ExternalID      pgtype.Text              `json:"external_id"`
+	Sku             pgtype.Text              `json:"sku"`
+	Price           pgtype.Numeric           `json:"price"`
+	InventoryItemID pgtype.Text              `json:"inventory_item_id"`
+	CreatedAt       pgtype.Timestamp         `json:"created_at"`
+	UpdatedAt       pgtype.Timestamp         `json:"updated_at"`
+}
+
 const upsertProductVariant = `-- name: UpsertProductVariant :one
 INSERT INTO product_variants (id, product_id, external_id, sku, price, inventory_item_id, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())

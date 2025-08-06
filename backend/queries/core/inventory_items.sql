@@ -30,3 +30,6 @@ DO UPDATE SET
     cost = EXCLUDED.cost,
     updated_at = NOW()
 RETURNING id, integration_id, external_id, sku, tracked, cost, created_at, updated_at;
+
+-- name: InsertInventoryItemsBatch :copyfrom
+INSERT INTO inventory_items (id, integration_id, external_id, sku, tracked, cost, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);

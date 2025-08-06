@@ -9,6 +9,86 @@ import (
 	"context"
 )
 
+// iteratorForInsertInventoryItemsBatch implements pgx.CopyFromSource.
+type iteratorForInsertInventoryItemsBatch struct {
+	rows                 []InsertInventoryItemsBatchParams
+	skippedFirstNextCall bool
+}
+
+func (r *iteratorForInsertInventoryItemsBatch) Next() bool {
+	if len(r.rows) == 0 {
+		return false
+	}
+	if !r.skippedFirstNextCall {
+		r.skippedFirstNextCall = true
+		return true
+	}
+	r.rows = r.rows[1:]
+	return len(r.rows) > 0
+}
+
+func (r iteratorForInsertInventoryItemsBatch) Values() ([]interface{}, error) {
+	return []interface{}{
+		r.rows[0].ID,
+		r.rows[0].IntegrationID,
+		r.rows[0].ExternalID,
+		r.rows[0].Sku,
+		r.rows[0].Tracked,
+		r.rows[0].Cost,
+		r.rows[0].CreatedAt,
+		r.rows[0].UpdatedAt,
+	}, nil
+}
+
+func (r iteratorForInsertInventoryItemsBatch) Err() error {
+	return nil
+}
+
+func (q *Queries) InsertInventoryItemsBatch(ctx context.Context, arg []InsertInventoryItemsBatchParams) (int64, error) {
+	return q.db.CopyFrom(ctx, []string{"inventory_items"}, []string{"id", "integration_id", "external_id", "sku", "tracked", "cost", "created_at", "updated_at"}, &iteratorForInsertInventoryItemsBatch{rows: arg})
+}
+
+// iteratorForInsertLocationsBatch implements pgx.CopyFromSource.
+type iteratorForInsertLocationsBatch struct {
+	rows                 []InsertLocationsBatchParams
+	skippedFirstNextCall bool
+}
+
+func (r *iteratorForInsertLocationsBatch) Next() bool {
+	if len(r.rows) == 0 {
+		return false
+	}
+	if !r.skippedFirstNextCall {
+		r.skippedFirstNextCall = true
+		return true
+	}
+	r.rows = r.rows[1:]
+	return len(r.rows) > 0
+}
+
+func (r iteratorForInsertLocationsBatch) Values() ([]interface{}, error) {
+	return []interface{}{
+		r.rows[0].ID,
+		r.rows[0].IntegrationID,
+		r.rows[0].ExternalID,
+		r.rows[0].Name,
+		r.rows[0].Address,
+		r.rows[0].Country,
+		r.rows[0].Province,
+		r.rows[0].IsActive,
+		r.rows[0].CreatedAt,
+		r.rows[0].UpdatedAt,
+	}, nil
+}
+
+func (r iteratorForInsertLocationsBatch) Err() error {
+	return nil
+}
+
+func (q *Queries) InsertLocationsBatch(ctx context.Context, arg []InsertLocationsBatchParams) (int64, error) {
+	return q.db.CopyFrom(ctx, []string{"locations"}, []string{"id", "integration_id", "external_id", "name", "address", "country", "province", "is_active", "created_at", "updated_at"}, &iteratorForInsertLocationsBatch{rows: arg})
+}
+
 // iteratorForInsertOrdersBatch implements pgx.CopyFromSource.
 type iteratorForInsertOrdersBatch struct {
 	rows                 []InsertOrdersBatchParams
@@ -46,6 +126,45 @@ func (r iteratorForInsertOrdersBatch) Err() error {
 
 func (q *Queries) InsertOrdersBatch(ctx context.Context, arg []InsertOrdersBatchParams) (int64, error) {
 	return q.db.CopyFrom(ctx, []string{"orders"}, []string{"id", "integration_id", "external_id", "created_at", "financial_status", "fulfillment_status", "total_price", "cancelled_at"}, &iteratorForInsertOrdersBatch{rows: arg})
+}
+
+// iteratorForInsertProductVariantsBatch implements pgx.CopyFromSource.
+type iteratorForInsertProductVariantsBatch struct {
+	rows                 []InsertProductVariantsBatchParams
+	skippedFirstNextCall bool
+}
+
+func (r *iteratorForInsertProductVariantsBatch) Next() bool {
+	if len(r.rows) == 0 {
+		return false
+	}
+	if !r.skippedFirstNextCall {
+		r.skippedFirstNextCall = true
+		return true
+	}
+	r.rows = r.rows[1:]
+	return len(r.rows) > 0
+}
+
+func (r iteratorForInsertProductVariantsBatch) Values() ([]interface{}, error) {
+	return []interface{}{
+		r.rows[0].ID,
+		r.rows[0].ProductID,
+		r.rows[0].ExternalID,
+		r.rows[0].Sku,
+		r.rows[0].Price,
+		r.rows[0].InventoryItemID,
+		r.rows[0].CreatedAt,
+		r.rows[0].UpdatedAt,
+	}, nil
+}
+
+func (r iteratorForInsertProductVariantsBatch) Err() error {
+	return nil
+}
+
+func (q *Queries) InsertProductVariantsBatch(ctx context.Context, arg []InsertProductVariantsBatchParams) (int64, error) {
+	return q.db.CopyFrom(ctx, []string{"product_variants"}, []string{"id", "product_id", "external_id", "sku", "price", "inventory_item_id", "created_at", "updated_at"}, &iteratorForInsertProductVariantsBatch{rows: arg})
 }
 
 // iteratorForInsertProductsBatch implements pgx.CopyFromSource.

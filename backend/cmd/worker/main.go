@@ -36,7 +36,7 @@ func main() {
 
 	// Initialize managers
 	shopifyManager := manager.NewShopifyManager(database, workerQueue)
-	syncManager := manager.NewInventorySyncManager(database, shopifyManager, workerQueue)
+	syncManager := manager.NewInventorySyncManager(database, workerQueue)
 
 	// Create worker server with middleware and proper configuration
 	server := worker.NewServer(shopifyManager, syncManager)

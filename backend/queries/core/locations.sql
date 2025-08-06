@@ -32,3 +32,6 @@ DO UPDATE SET
     is_active = EXCLUDED.is_active,
     updated_at = NOW()
 RETURNING id, integration_id, external_id, name, address, country, province, is_active, created_at, updated_at;
+
+-- name: InsertLocationsBatch :copyfrom
+INSERT INTO locations (id, integration_id, external_id, name, address, country, province, is_active, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);

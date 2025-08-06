@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -45,8 +46,23 @@ func NewClient(shopDomain, accessToken string) *Client {
 	}
 }
 
+// ResponseWithPagination wraps response data with pagination info
+type ResponseWithPagination struct {
+	Data       []byte
+	Pagination PaginationInfo
+}
+
 // makeRequest makes a request to the Shopify API with rate limiting
 func (c *Client) makeRequest(ctx context.Context, method, path string, params url.Values) ([]byte, error) {
+	resp, err := c.makeRequestWithPagination(ctx, method, path, params)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Data, nil
+}
+
+// makeRequestWithPagination makes a request to the Shopify API with rate limiting and returns pagination info
+func (c *Client) makeRequestWithPagination(ctx context.Context, method, path string, params url.Values) (*ResponseWithPagination, error) {
 	// Wait for rate limiter
 	if err := c.rateLimiter.Wait(ctx); err != nil {
 		return nil, errors.Wrap(err, "rate limiter error")
@@ -80,70 +96,136 @@ func (c *Client) makeRequest(ctx context.Context, method, path string, params ur
 		return nil, fmt.Errorf("shopify API error: status %d, body: %s", resp.StatusCode, string(body))
 	}
 
-	return body, nil
+	// Extract pagination info from Link header
+	pagination := PaginationInfo{}
+	if linkHeader := resp.Header.Get("Link"); linkHeader != "" {
+		pagination = c.parseLinkHeader(linkHeader)
+	}
+
+	return &ResponseWithPagination{
+		Data:       body,
+		Pagination: pagination,
+	}, nil
 }
 
-// GetProducts retrieves products from Shopify
-func (c *Client) GetProducts(ctx context.Context, limit int, pageInfo string) (*ProductsResponse, error) {
-	params := url.Values{}
+// parseLinkHeader parses the Link header to extract pagination information
+func (c *Client) parseLinkHeader(linkHeader string) PaginationInfo {
+	pagination := PaginationInfo{}
+
+	// Split by comma to get individual links
+	links := strings.Split(linkHeader, ",")
+
+	for _, link := range links {
+		link = strings.TrimSpace(link)
+
+		// Extract URL and relation
+		parts := strings.Split(link, ";")
+		if len(parts) < 2 {
+			continue
+		}
+
+		urlPart := strings.TrimSpace(parts[0])
+		relPart := strings.TrimSpace(parts[1])
+
+		// Remove angle brackets from URL
+		if strings.HasPrefix(urlPart, "<") && strings.HasSuffix(urlPart, ">") {
+			urlPart = urlPart[1 : len(urlPart)-1]
+		}
+
+		// Parse the page_info from URL
+		if parsedURL, err := url.Parse(urlPart); err == nil {
+			pageInfo := parsedURL.Query().Get("page_info")
+
+			if strings.Contains(relPart, `rel="next"`) {
+				pagination.NextPageInfo = pageInfo
+			} else if strings.Contains(relPart, `rel="previous"`) {
+				pagination.PreviousPageInfo = pageInfo
+			}
+		}
+	}
+
+	return pagination
+}
+
+// addPaginationParams adds common pagination parameters to url.Values
+func addPaginationParams(params url.Values, limit int, pageInfo string) {
 	if limit > 0 {
 		params.Set("limit", strconv.Itoa(limit))
 	}
 	if pageInfo != "" {
 		params.Set("page_info", pageInfo)
 	}
+}
 
-	body, err := c.makeRequest(ctx, "GET", "/products.json", params)
+// convertIDsToString converts a slice of int64 IDs to a comma-separated string
+func convertIDsToString(ids []int64) string {
+	idStrings := make([]string, len(ids))
+	for i, id := range ids {
+		idStrings[i] = strconv.FormatInt(id, 10)
+	}
+	return strings.Join(idStrings, ",")
+}
+
+// makePaginatedRequest is a generic helper for making paginated requests and unmarshaling responses
+func (c *Client) makePaginatedRequest(ctx context.Context, endpoint string, params url.Values, target interface{}) error {
+	resp, err := c.makeRequestWithPagination(ctx, "GET", endpoint, params)
 	if err != nil {
+		return err
+	}
+
+	if err := json.Unmarshal(resp.Data, target); err != nil {
+		return errors.Wrap(err, "failed to unmarshal response")
+	}
+
+	// Set pagination info using reflection
+	// This assumes the target has a Pagination field of type PaginationInfo
+	v := reflect.ValueOf(target).Elem()
+	if paginationField := v.FieldByName("Pagination"); paginationField.IsValid() && paginationField.CanSet() {
+		paginationField.Set(reflect.ValueOf(resp.Pagination))
+	}
+
+	return nil
+}
+
+// GetProducts retrieves products from Shopify
+func (c *Client) GetProducts(ctx context.Context, limit int, pageInfo string) (*ProductsResponse, error) {
+	params := url.Values{}
+	addPaginationParams(params, limit, pageInfo)
+
+	var response ProductsResponse
+	if err := c.makePaginatedRequest(ctx, "/products.json", params, &response); err != nil {
 		return nil, errors.Wrap(err, "failed to get products")
 	}
 
-	var response ProductsResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal products response")
-	}
-
 	return &response, nil
 }
 
-// GetLocations retrieves locations from Shopify
-func (c *Client) GetLocations(ctx context.Context) (*LocationsResponse, error) {
-	body, err := c.makeRequest(ctx, "GET", "/locations.json", nil)
-	if err != nil {
+// GetLocations retrieves locations from Shopify with pagination support
+func (c *Client) GetLocations(ctx context.Context, limit int, pageInfo string) (*LocationsResponse, error) {
+	params := url.Values{}
+	addPaginationParams(params, limit, pageInfo)
+
+	var response LocationsResponse
+	if err := c.makePaginatedRequest(ctx, "/locations.json", params, &response); err != nil {
 		return nil, errors.Wrap(err, "failed to get locations")
 	}
 
-	var response LocationsResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal locations response")
-	}
-
 	return &response, nil
 }
 
-// GetInventoryLevels retrieves inventory levels for given inventory item IDs
-func (c *Client) GetInventoryLevels(ctx context.Context, inventoryItemIDs []int64) (*InventoryLevelsResponse, error) {
+// GetInventoryLevels retrieves inventory levels for given inventory item IDs with pagination support
+func (c *Client) GetInventoryLevels(ctx context.Context, inventoryItemIDs []int64, limit int, pageInfo string) (*InventoryLevelsResponse, error) {
 	if len(inventoryItemIDs) == 0 {
 		return &InventoryLevelsResponse{}, nil
 	}
 
 	params := url.Values{}
-
-	// Convert IDs to comma-separated string
-	idStrings := make([]string, len(inventoryItemIDs))
-	for i, id := range inventoryItemIDs {
-		idStrings[i] = strconv.FormatInt(id, 10)
-	}
-	params.Set("inventory_item_ids", strings.Join(idStrings, ","))
-
-	body, err := c.makeRequest(ctx, "GET", "/inventory_levels.json", params)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get inventory levels")
-	}
+	params.Set("inventory_item_ids", convertIDsToString(inventoryItemIDs))
+	addPaginationParams(params, limit, pageInfo)
 
 	var response InventoryLevelsResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal inventory levels response")
+	if err := c.makePaginatedRequest(ctx, "/inventory_levels.json", params, &response); err != nil {
+		return nil, errors.Wrap(err, "failed to get inventory levels")
 	}
 
 	return &response, nil
@@ -166,27 +248,34 @@ func (c *Client) GetInventoryItem(ctx context.Context, inventoryItemID int64) (*
 	return &response, nil
 }
 
+// GetInventoryItems retrieves multiple inventory items with pagination support
+func (c *Client) GetInventoryItems(ctx context.Context, inventoryItemIDs []int64, limit int, pageInfo string) (*InventoryItemsResponse, error) {
+	if len(inventoryItemIDs) == 0 {
+		return &InventoryItemsResponse{}, nil
+	}
+
+	params := url.Values{}
+	params.Set("ids", convertIDsToString(inventoryItemIDs))
+	addPaginationParams(params, limit, pageInfo)
+
+	var response InventoryItemsResponse
+	if err := c.makePaginatedRequest(ctx, "/inventory_items.json", params, &response); err != nil {
+		return nil, errors.Wrap(err, "failed to get inventory items")
+	}
+
+	return &response, nil
+}
+
 // GetOrders retrieves orders from Shopify with date filtering
 func (c *Client) GetOrders(ctx context.Context, createdAtMin time.Time, limit int, pageInfo string) (*OrdersResponse, error) {
 	params := url.Values{}
 	params.Set("status", "any")
 	params.Set("created_at_min", createdAtMin.Format(time.RFC3339))
-
-	if limit > 0 {
-		params.Set("limit", strconv.Itoa(limit))
-	}
-	if pageInfo != "" {
-		params.Set("page_info", pageInfo)
-	}
-
-	body, err := c.makeRequest(ctx, "GET", "/orders.json", params)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get orders")
-	}
+	addPaginationParams(params, limit, pageInfo)
 
 	var response OrdersResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal orders response")
+	if err := c.makePaginatedRequest(ctx, "/orders.json", params, &response); err != nil {
+		return nil, errors.Wrap(err, "failed to get orders")
 	}
 
 	return &response, nil

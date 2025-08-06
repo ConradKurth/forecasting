@@ -74,7 +74,7 @@ func TriggerShopifySync(syncManager *manager.InventorySyncManager) response.Hand
 
 		return response.JSON(w, http.StatusOK, SyncStatusResponse{
 			IntegrationID: result.IntegrationID,
-			Status:        result.Status,
+			Status:        string(result.Status),
 			Error:         result.Error,
 		})
 	}
@@ -109,7 +109,7 @@ func GetSyncStatus(syncManager *manager.InventorySyncManager) response.HandlerFu
 
 		return response.JSON(w, http.StatusOK, SyncStatusResponse{
 			IntegrationID: result.IntegrationID,
-			Status:        result.Status,
+			Status:        string(result.Status),
 			Error:         result.Error,
 		})
 	}

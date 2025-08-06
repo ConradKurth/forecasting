@@ -142,6 +142,17 @@ func (q *Queries) GetInventoryItemsByIntegrationID(ctx context.Context, arg GetI
 	return items, nil
 }
 
+type InsertInventoryItemsBatchParams struct {
+	ID            id.ID[id.InventoryItem]       `json:"id"`
+	IntegrationID id.ID[id.PlatformIntegration] `json:"integration_id"`
+	ExternalID    pgtype.Text                   `json:"external_id"`
+	Sku           pgtype.Text                   `json:"sku"`
+	Tracked       pgtype.Bool                   `json:"tracked"`
+	Cost          pgtype.Numeric                `json:"cost"`
+	CreatedAt     pgtype.Timestamp              `json:"created_at"`
+	UpdatedAt     pgtype.Timestamp              `json:"updated_at"`
+}
+
 const upsertInventoryItem = `-- name: UpsertInventoryItem :one
 INSERT INTO inventory_items (id, integration_id, external_id, sku, tracked, cost, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())

@@ -42,7 +42,7 @@ func NewShopifyManager(database db.Database, queue interfaces.Queue) *ShopifyMan
 
 // ShopifyIntegration represents the complete shopify integration data
 type ShopifyIntegration struct {
-	User        *users.User         `json:"user"`
+	User        *users.User           `json:"user"`
 	Store       *shopify.ShopifyStore `json:"store"`
 	ShopifyUser *shopify.ShopifyUser  `json:"shopify_user"`
 	AccessToken string                `json:"-"` // Don't serialize access token
