@@ -13,6 +13,7 @@ import (
 	shopifyapi "github.com/ConradKurth/forecasting/backend/internal/shopify"
 	"github.com/ConradKurth/forecasting/backend/pkg/id"
 	"github.com/ConradKurth/forecasting/backend/pkg/logger"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pkg/errors"
 )
@@ -142,6 +143,7 @@ type SyncRequest struct {
 type SyncResult struct {
 	IntegrationID string     `json:"integration_id"`
 	Status        SyncStatus `json:"status"`
+	LastSynced    *time.Time `json:"last_synced,omitempty"`
 	Error         string     `json:"error,omitempty"`
 }
 
@@ -212,15 +214,27 @@ func (m *InventorySyncManager) TriggerShopifySync(ctx context.Context, req SyncR
 		}
 	}
 
+	// Set sync state to in_progress before enqueuing the task
+	err = m.database.WithTx(ctx, func(tx *db.TxDB) error {
+		return m.updateSyncState(ctx, tx, integration.ID, EntityTypeFullSync, SyncStatusInProgress, "")
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to set sync state to in_progress")
+	}
+
 	// Enqueue async sync task
 	err = m.queue.EnqueueShopifyInventorySync(ctx, integration.ID.String(), req.ShopDomain, accessToken)
 	if err != nil {
+		// If enqueueing fails, set status back to failed
+		_ = m.database.WithTx(ctx, func(tx *db.TxDB) error {
+			return m.updateSyncState(ctx, tx, integration.ID, EntityTypeFullSync, SyncStatusFailed, "failed to enqueue sync task")
+		})
 		return nil, errors.Wrap(err, "failed to enqueue sync task")
 	}
 
 	return &SyncResult{
 		IntegrationID: integration.ID.String(),
-		Status:        SyncStatusSyncStarted,
+		Status:        SyncStatusInProgress,
 	}, nil
 }
 
@@ -232,13 +246,20 @@ func (m *InventorySyncManager) GetSyncStatus(ctx context.Context, userID id.ID[i
 		return nil, errors.Wrap(err, "shop not found")
 	}
 
-	// Get integration
+	// Get integration - if it doesn't exist, return never synced status
 	integration, err := m.database.GetCore().GetPlatformIntegrationByShopAndType(ctx, core.GetPlatformIntegrationByShopAndTypeParams{
 		ShopID:       shop.ID,
 		PlatformType: core.PlatformTypeShopify,
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "integration not found")
+		if errors.Is(err, pgx.ErrNoRows) {
+			// No integration found - return never synced status
+			return &SyncResult{
+				IntegrationID: "",
+				Status:        SyncStatusNeverSynced,
+			}, nil
+		}
+		return nil, errors.Wrap(err, "failed to get integration")
 	}
 
 	// Get sync states
@@ -260,6 +281,9 @@ func (m *InventorySyncManager) GetSyncStatus(ctx context.Context, userID id.ID[i
 				result.Status = FromCoreStatus(state.SyncStatus)
 				if state.ErrorMessage.Valid {
 					result.Error = state.ErrorMessage.String
+				}
+				if state.LastSyncedAt.Valid {
+					result.LastSynced = &state.LastSyncedAt.Time
 				}
 				break
 			}
@@ -330,10 +354,7 @@ func (m *InventorySyncManager) SyncInventory(ctx context.Context, integrationID 
 
 	// Start a database transaction for consistency
 	return m.database.WithTx(ctx, func(tx *db.TxDB) error {
-		// Update sync state to in_progress
-		if err := m.updateSyncState(ctx, tx, integrationID, EntityTypeFullSync, SyncStatusInProgress, ""); err != nil {
-			return errors.Wrap(err, "failed to update sync state to in_progress")
-		}
+		// Status should already be in_progress from TriggerShopifySync
 
 		// Get platform integration details
 		integration, err := tx.GetCore().GetPlatformIntegrationByID(ctx, integrationID)
@@ -393,6 +414,7 @@ func (m *InventorySyncManager) updateSyncState(ctx context.Context, tx *db.TxDB,
 	}
 
 	_, err := tx.GetCore().UpsertSyncState(ctx, core.UpsertSyncStateParams{
+		ID:            id.NewGeneration[id.SyncState](),
 		IntegrationID: integrationID,
 		EntityType:    ToCoreEntity(entityType),
 		SyncStatus:    ToCoreStatus(status),
@@ -476,22 +498,23 @@ func (m *InventorySyncManager) fetchAllShopifyData(ctx context.Context, client *
 	}
 	logger.Info("Products fetched", "count", len(products))
 
-	// Fetch orders from last 30 days
-	logger.Info("Fetching orders from API")
-	createdAtMin := time.Now().AddDate(0, 0, -30)
-	pageInfo = ""
-	for {
-		response, err := client.GetOrders(ctx, createdAtMin, 250, pageInfo)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to fetch orders")
-		}
-		orders = append(orders, response.Orders...)
-		if response.Pagination.NextPageInfo == "" {
-			break
-		}
-		pageInfo = response.Pagination.NextPageInfo
-	}
-	logger.Info("Orders fetched", "count", len(orders))
+	// TODO: Fetch orders from last 30 days - disabled due to Shopify protected customer data restrictions
+	// Requires Shopify app approval for protected customer data access
+	// logger.Info("Fetching orders from API")
+	// createdAtMin := time.Now().AddDate(0, 0, -30)
+	// pageInfo = ""
+	// for {
+	// 	response, err := client.GetOrders(ctx, createdAtMin, 250, pageInfo)
+	// 	if err != nil {
+	// 		return nil, errors.Wrap(err, "failed to fetch orders")
+	// 	}
+	// 	orders = append(orders, response.Orders...)
+	// 	if response.Pagination.NextPageInfo == "" {
+	// 		break
+	// 	}
+	// 	pageInfo = response.Pagination.NextPageInfo
+	// }
+	// logger.Info("Orders fetched", "count", len(orders))
 
 	logger.Info("All data fetched successfully",
 		"locations", len(locations),
@@ -763,7 +786,7 @@ func (m *InventorySyncManager) batchSyncAllData(ctx context.Context, tx *db.TxDB
 	return nil
 }
 
-// batchInsertLocations inserts locations in batches of specified size
+// batchInsertLocations inserts locations using upsert to handle conflicts
 func (m *InventorySyncManager) batchInsertLocations(ctx context.Context, tx *db.TxDB, locations []core.InsertLocationsBatchParams, batchSize int) error {
 	for i := 0; i < len(locations); i += batchSize {
 		end := i + batchSize
@@ -772,17 +795,30 @@ func (m *InventorySyncManager) batchInsertLocations(ctx context.Context, tx *db.
 		}
 
 		batch := locations[i:end]
-		_, err := tx.GetCore().InsertLocationsBatch(ctx, batch)
-		if err != nil {
-			return errors.Wrapf(err, "failed to insert locations batch %d-%d", i, end)
+		
+		// Use individual upserts instead of batch insert to handle ON CONFLICT
+		for _, location := range batch {
+			_, err := tx.GetCore().UpsertLocation(ctx, core.UpsertLocationParams{
+				ID:            location.ID,
+				IntegrationID: location.IntegrationID,
+				ExternalID:    location.ExternalID,
+				Name:          location.Name,
+				Address:       location.Address,
+				Country:       location.Country,
+				Province:      location.Province,
+				IsActive:      location.IsActive,
+			})
+			if err != nil {
+				return errors.Wrapf(err, "failed to upsert location %v", location.ExternalID)
+			}
 		}
 
-		logger.Info("Inserted locations batch", "start", i, "end", end, "count", len(batch))
+		logger.Info("Upserted locations batch", "start", i, "end", end, "count", len(batch))
 	}
 	return nil
 }
 
-// batchInsertProducts inserts products in batches of specified size
+// batchInsertProducts inserts products using upsert to handle conflicts
 func (m *InventorySyncManager) batchInsertProducts(ctx context.Context, tx *db.TxDB, products []core.InsertProductsBatchParams, batchSize int) error {
 	for i := 0; i < len(products); i += batchSize {
 		end := i + batchSize
@@ -791,17 +827,29 @@ func (m *InventorySyncManager) batchInsertProducts(ctx context.Context, tx *db.T
 		}
 
 		batch := products[i:end]
-		_, err := tx.GetCore().InsertProductsBatch(ctx, batch)
-		if err != nil {
-			return errors.Wrapf(err, "failed to insert products batch %d-%d", i, end)
+		
+		// Use individual upserts instead of batch insert to handle ON CONFLICT
+		for _, product := range batch {
+			_, err := tx.GetCore().UpsertProduct(ctx, core.UpsertProductParams{
+				ID:            product.ID,
+				IntegrationID: product.IntegrationID,
+				ExternalID:    product.ExternalID,
+				Title:         product.Title,
+				Handle:        product.Handle,
+				ProductType:   product.ProductType,
+				Status:        product.Status,
+			})
+			if err != nil {
+				return errors.Wrapf(err, "failed to upsert product %s", product.Handle)
+			}
 		}
 
-		logger.Info("Inserted products batch", "start", i, "end", end, "count", len(batch))
+		logger.Info("Upserted products batch", "start", i, "end", end, "count", len(batch))
 	}
 	return nil
 }
 
-// batchInsertProductVariants inserts product variants in batches of specified size
+// batchInsertProductVariants inserts product variants using upsert to handle conflicts
 func (m *InventorySyncManager) batchInsertProductVariants(ctx context.Context, tx *db.TxDB, variants []core.InsertProductVariantsBatchParams, batchSize int) error {
 	for i := 0; i < len(variants); i += batchSize {
 		end := i + batchSize
@@ -810,17 +858,28 @@ func (m *InventorySyncManager) batchInsertProductVariants(ctx context.Context, t
 		}
 
 		batch := variants[i:end]
-		_, err := tx.GetCore().InsertProductVariantsBatch(ctx, batch)
-		if err != nil {
-			return errors.Wrapf(err, "failed to insert product variants batch %d-%d", i, end)
+		
+		// Use individual upserts instead of batch insert to handle ON CONFLICT
+		for _, variant := range batch {
+			_, err := tx.GetCore().UpsertProductVariant(ctx, core.UpsertProductVariantParams{
+				ID:              variant.ID,
+				ProductID:       variant.ProductID,
+				ExternalID:      variant.ExternalID,
+				Sku:             variant.Sku,
+				Price:           variant.Price,
+				InventoryItemID: variant.InventoryItemID,
+			})
+			if err != nil {
+				return errors.Wrapf(err, "failed to upsert product variant %v", variant.ExternalID)
+			}
 		}
 
-		logger.Info("Inserted product variants batch", "start", i, "end", end, "count", len(batch))
+		logger.Info("Upserted product variants batch", "start", i, "end", end, "count", len(batch))
 	}
 	return nil
 }
 
-// batchInsertInventoryItems inserts inventory items in batches of specified size
+// batchInsertInventoryItems inserts inventory items using upsert to handle conflicts
 func (m *InventorySyncManager) batchInsertInventoryItems(ctx context.Context, tx *db.TxDB, items []core.InsertInventoryItemsBatchParams, batchSize int) error {
 	for i := 0; i < len(items); i += batchSize {
 		end := i + batchSize
@@ -829,17 +888,28 @@ func (m *InventorySyncManager) batchInsertInventoryItems(ctx context.Context, tx
 		}
 
 		batch := items[i:end]
-		_, err := tx.GetCore().InsertInventoryItemsBatch(ctx, batch)
-		if err != nil {
-			return errors.Wrapf(err, "failed to insert inventory items batch %d-%d", i, end)
+		
+		// Use individual upserts instead of batch insert to handle ON CONFLICT
+		for _, item := range batch {
+			_, err := tx.GetCore().UpsertInventoryItem(ctx, core.UpsertInventoryItemParams{
+				ID:            item.ID,
+				IntegrationID: item.IntegrationID,
+				ExternalID:    item.ExternalID,
+				Sku:           item.Sku,
+				Tracked:       item.Tracked,
+				Cost:          item.Cost,
+			})
+			if err != nil {
+				return errors.Wrapf(err, "failed to upsert inventory item %v", item.ExternalID)
+			}
 		}
 
-		logger.Info("Inserted inventory items batch", "start", i, "end", end, "count", len(batch))
+		logger.Info("Upserted inventory items batch", "start", i, "end", end, "count", len(batch))
 	}
 	return nil
 }
 
-// batchInsertOrders inserts orders in batches of specified size
+// batchInsertOrders inserts orders using upsert to handle conflicts
 func (m *InventorySyncManager) batchInsertOrders(ctx context.Context, tx *db.TxDB, orders []core.InsertOrdersBatchParams, batchSize int) error {
 	for i := 0; i < len(orders); i += batchSize {
 		end := i + batchSize
@@ -848,12 +918,25 @@ func (m *InventorySyncManager) batchInsertOrders(ctx context.Context, tx *db.TxD
 		}
 
 		batch := orders[i:end]
-		_, err := tx.GetCore().InsertOrdersBatch(ctx, batch)
-		if err != nil {
-			return errors.Wrapf(err, "failed to insert orders batch %d-%d", i, end)
+		
+		// Use individual upserts instead of batch insert to handle ON CONFLICT
+		for _, order := range batch {
+			_, err := tx.GetCore().UpsertOrder(ctx, core.UpsertOrderParams{
+				ID:                order.ID,
+				IntegrationID:     order.IntegrationID,
+				ExternalID:        order.ExternalID,
+				CreatedAt:         order.CreatedAt,
+				FinancialStatus:   order.FinancialStatus,
+				FulfillmentStatus: order.FulfillmentStatus,
+				TotalPrice:        order.TotalPrice,
+				CancelledAt:       order.CancelledAt,
+			})
+			if err != nil {
+				return errors.Wrapf(err, "failed to upsert order %v", order.ExternalID)
+			}
 		}
 
-		logger.Info("Inserted orders batch", "start", i, "end", end, "count", len(batch))
+		logger.Info("Upserted orders batch", "start", i, "end", end, "count", len(batch))
 	}
 	return nil
 }

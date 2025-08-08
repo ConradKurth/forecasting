@@ -36,7 +36,7 @@ RETURNING id, integration_id, external_id, created_at, financial_status, fulfill
 -- name: UpsertOrder :one
 INSERT INTO orders (id, integration_id, external_id, created_at, financial_status, fulfillment_status, total_price, cancelled_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-ON CONFLICT (integration_id, external_id)
+ON CONFLICT (external_id)
 DO UPDATE SET
     financial_status = EXCLUDED.financial_status,
     fulfillment_status = EXCLUDED.fulfillment_status,

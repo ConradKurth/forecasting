@@ -23,7 +23,7 @@ RETURNING id, integration_id, external_id, sku, tracked, cost, created_at, updat
 -- name: UpsertInventoryItem :one
 INSERT INTO inventory_items (id, integration_id, external_id, sku, tracked, cost, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-ON CONFLICT (integration_id, external_id)
+ON CONFLICT (external_id)
 DO UPDATE SET
     sku = EXCLUDED.sku,
     tracked = EXCLUDED.tracked,

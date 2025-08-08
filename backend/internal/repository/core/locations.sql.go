@@ -154,23 +154,10 @@ func (q *Queries) GetLocationsByIntegrationID(ctx context.Context, arg GetLocati
 	return items, nil
 }
 
-type InsertLocationsBatchParams struct {
-	ID            id.ID[id.Location]            `json:"id"`
-	IntegrationID id.ID[id.PlatformIntegration] `json:"integration_id"`
-	ExternalID    pgtype.Text                   `json:"external_id"`
-	Name          string                        `json:"name"`
-	Address       pgtype.Text                   `json:"address"`
-	Country       pgtype.Text                   `json:"country"`
-	Province      pgtype.Text                   `json:"province"`
-	IsActive      pgtype.Bool                   `json:"is_active"`
-	CreatedAt     pgtype.Timestamp              `json:"created_at"`
-	UpdatedAt     pgtype.Timestamp              `json:"updated_at"`
-}
-
 const upsertLocation = `-- name: UpsertLocation :one
 INSERT INTO locations (id, integration_id, external_id, name, address, country, province, is_active, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
-ON CONFLICT (integration_id, external_id)
+ON CONFLICT (external_id)
 DO UPDATE SET
     name = EXCLUDED.name,
     address = EXCLUDED.address,

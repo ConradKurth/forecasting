@@ -23,7 +23,7 @@ RETURNING id, integration_id, external_id, name, address, country, province, is_
 -- name: UpsertLocation :one
 INSERT INTO locations (id, integration_id, external_id, name, address, country, province, is_active, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
-ON CONFLICT (integration_id, external_id)
+ON CONFLICT (external_id)
 DO UPDATE SET
     name = EXCLUDED.name,
     address = EXCLUDED.address,
@@ -33,5 +33,14 @@ DO UPDATE SET
     updated_at = NOW()
 RETURNING id, integration_id, external_id, name, address, country, province, is_active, created_at, updated_at;
 
--- name: InsertLocationsBatch :copyfrom
-INSERT INTO locations (id, integration_id, external_id, name, address, country, province, is_active, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
+-- name: InsertLocationsBatch :batchexec
+INSERT INTO locations (id, integration_id, external_id, name, address, country, province, is_active, created_at, updated_at) 
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+ON CONFLICT (external_id)
+DO UPDATE SET
+    name = EXCLUDED.name,
+    address = EXCLUDED.address,
+    country = EXCLUDED.country,
+    province = EXCLUDED.province,
+    is_active = EXCLUDED.is_active,
+    updated_at = EXCLUDED.updated_at;

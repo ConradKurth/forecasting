@@ -190,18 +190,6 @@ func (q *Queries) GetProductsByIntegrationID(ctx context.Context, arg GetProduct
 	return items, nil
 }
 
-type InsertProductsBatchParams struct {
-	ID            id.ID[id.Product]             `json:"id"`
-	IntegrationID id.ID[id.PlatformIntegration] `json:"integration_id"`
-	ExternalID    pgtype.Text                   `json:"external_id"`
-	Title         string                        `json:"title"`
-	Handle        string                        `json:"handle"`
-	ProductType   pgtype.Text                   `json:"product_type"`
-	Status        ProductStatus                 `json:"status"`
-	CreatedAt     pgtype.Timestamp              `json:"created_at"`
-	UpdatedAt     pgtype.Timestamp              `json:"updated_at"`
-}
-
 const updateProduct = `-- name: UpdateProduct :one
 UPDATE products
 SET title = $3, handle = $4, product_type = $5, status = $6, updated_at = NOW()

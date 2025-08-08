@@ -24,7 +24,7 @@ type shopify struct {
 	ClientID     string   `long:"client-id" default:"" env:"SHOPIFY_CLIENT_ID" description:"Shopify Client ID"`
 	ClientSecret string   `long:"client-secret" default:"" env:"SHOPIFY_CLIENT_SECRET" description:"Shopify Client Secret"`
 	RedirectURL  string   `long:"redirect-url" default:"" env:"SHOPIFY_REDIRECT_URL" description:"Shopify Redirect URL"`
-	Scopes       []string `long:"scopes" default:"read_products" env:"SHOPIFY_SCOPES" description:"Shopify Scopes"`
+	Scopes       []string `long:"scopes" default:"read_products,read_locations,read_inventory,read_orders" env:"SHOPIFY_SCOPES" description:"Shopify Scopes"`
 }
 
 type cors struct {

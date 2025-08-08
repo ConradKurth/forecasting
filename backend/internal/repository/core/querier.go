@@ -53,10 +53,10 @@ type Querier interface {
 	GetSyncState(ctx context.Context, arg GetSyncStateParams) (SyncState, error)
 	GetSyncStatesByIntegrationID(ctx context.Context, integrationID id.ID[id.PlatformIntegration]) ([]SyncState, error)
 	InsertInventoryItemsBatch(ctx context.Context, arg []InsertInventoryItemsBatchParams) (int64, error)
-	InsertLocationsBatch(ctx context.Context, arg []InsertLocationsBatchParams) (int64, error)
+	InsertLocationsBatch(ctx context.Context, arg []InsertLocationsBatchParams) *InsertLocationsBatchBatchResults
 	InsertOrdersBatch(ctx context.Context, arg []InsertOrdersBatchParams) (int64, error)
-	InsertProductVariantsBatch(ctx context.Context, arg []InsertProductVariantsBatchParams) (int64, error)
-	InsertProductsBatch(ctx context.Context, arg []InsertProductsBatchParams) (int64, error)
+	InsertProductVariantsBatch(ctx context.Context, arg []InsertProductVariantsBatchParams) *InsertProductVariantsBatchBatchResults
+	InsertProductsBatch(ctx context.Context, arg []InsertProductsBatchParams) *InsertProductsBatchBatchResults
 	UpdateOrder(ctx context.Context, arg UpdateOrderParams) (Order, error)
 	UpdatePlatformIntegration(ctx context.Context, arg UpdatePlatformIntegrationParams) (PlatformIntegration, error)
 	UpdateProduct(ctx context.Context, arg UpdateProductParams) (Product, error)

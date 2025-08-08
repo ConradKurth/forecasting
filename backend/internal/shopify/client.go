@@ -68,7 +68,7 @@ func (c *Client) makeRequestWithPagination(ctx context.Context, method, path str
 		return nil, errors.Wrap(err, "rate limiter error")
 	}
 
-	requestURL := fmt.Sprintf("https://%s.myshopify.com/admin/api/2023-10%s", c.shopDomain, path)
+	requestURL := fmt.Sprintf("https://%s/admin/api/2023-10%s", c.shopDomain, path)
 	if len(params) > 0 {
 		requestURL += "?" + params.Encode()
 	}
@@ -271,6 +271,7 @@ func (c *Client) GetOrders(ctx context.Context, createdAtMin time.Time, limit in
 	params := url.Values{}
 	params.Set("status", "any")
 	params.Set("created_at_min", createdAtMin.Format(time.RFC3339))
+	params.Set("fields", "id,name,created_at,updated_at,financial_status,fulfillment_status,total_price,currency,line_items")
 	addPaginationParams(params, limit, pageInfo)
 
 	var response OrdersResponse

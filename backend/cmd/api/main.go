@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -40,7 +41,6 @@ func main() {
 		panic(err)
 	}
 	defer database.Close()
-
 	// Initialize worker queue client
 	workerQueue := worker.NewClient()
 	defer func() {
@@ -76,9 +76,9 @@ func main() {
 	r.Use(middleware.Recoverer)
 
 	// Initialize routes
-	oauth.InitRoutes(r, shopifyManager)
+	oauth.InitRoutes(r, shopifyManager, syncManager)
 	dashboard.InitRoutes(r, shopifyManager)
-	sync.InitRoutes(r, syncManager)
+	sync.InitRoutes(r, syncManager, database)
 
 	// Create HTTP server
 	server := &http.Server{
@@ -89,7 +89,7 @@ func main() {
 	// Channel to listen for interrupt signal to terminate gracefully
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
+	fmt.Println("Server listening on :3001")
 	// Start server in a goroutine
 	go func() {
 		logger.Info("Server listening on :3001")

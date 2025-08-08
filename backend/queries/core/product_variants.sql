@@ -31,7 +31,7 @@ RETURNING id, product_id, external_id, sku, price, inventory_item_id, created_at
 -- name: UpsertProductVariant :one
 INSERT INTO product_variants (id, product_id, external_id, sku, price, inventory_item_id, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-ON CONFLICT (product_id, external_id)
+ON CONFLICT (external_id)
 DO UPDATE SET
     sku = EXCLUDED.sku,
     price = EXCLUDED.price,
@@ -39,5 +39,12 @@ DO UPDATE SET
     updated_at = NOW()
 RETURNING id, product_id, external_id, sku, price, inventory_item_id, created_at, updated_at;
 
--- name: InsertProductVariantsBatch :copyfrom
-INSERT INTO product_variants (id, product_id, external_id, sku, price, inventory_item_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
+-- name: InsertProductVariantsBatch :batchexec
+INSERT INTO product_variants (id, product_id, external_id, sku, price, inventory_item_id, created_at, updated_at) 
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (external_id)
+DO UPDATE SET
+    sku = EXCLUDED.sku,
+    price = EXCLUDED.price,
+    inventory_item_id = EXCLUDED.inventory_item_id,
+    updated_at = EXCLUDED.updated_at;

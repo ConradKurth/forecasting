@@ -13,12 +13,13 @@ import (
 	"github.com/ConradKurth/forecasting/backend/internal/http/response"
 	"github.com/ConradKurth/forecasting/backend/internal/manager"
 	"github.com/ConradKurth/forecasting/backend/pkg/id"
+	"github.com/ConradKurth/forecasting/backend/pkg/shopify"
 	"github.com/go-chi/chi/v5"
 )
 
-func InitRoutes(r *chi.Mux, shopifyManager *manager.ShopifyManager) {
+func InitRoutes(r *chi.Mux, shopifyManager *manager.ShopifyManager, syncManager *manager.InventorySyncManager) {
 	r.Get("/v1/shopify/install", response.Wrap(RequestInstall))
-	r.Get("/v1/shopify/callback", response.Wrap(RequestCallback(shopifyManager)))
+	r.Get("/v1/shopify/callback", response.Wrap(RequestCallback(shopifyManager, syncManager)))
 }
 
 func RequestInstall(w http.ResponseWriter, r *http.Request) error {
@@ -26,14 +27,15 @@ func RequestInstall(w http.ResponseWriter, r *http.Request) error {
 	if shop == "" {
 		return response.MissingParameter("shop")
 	}
+	normalizedShop := shopify.NormalizeDomain(shop)
 	redirectURL := fmt.Sprintf("https://%s/admin/oauth/authorize?client_id=%s&scope=%s&redirect_uri=%s",
-		shop, config.Values.Shopify.ClientID, url.QueryEscape(strings.Join(config.Values.Shopify.Scopes, ",")), url.QueryEscape(config.Values.Shopify.RedirectURL))
+		normalizedShop, config.Values.Shopify.ClientID, url.QueryEscape(strings.Join(config.Values.Shopify.Scopes, ",")), url.QueryEscape(config.Values.Shopify.RedirectURL))
 
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 	return nil
 }
 
-func RequestCallback(shopifyManager *manager.ShopifyManager) response.HandlerFunc {
+func RequestCallback(shopifyManager *manager.ShopifyManager, syncManager *manager.InventorySyncManager) response.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		shop := r.URL.Query().Get("shop")
 		code := r.URL.Query().Get("code")
@@ -45,7 +47,8 @@ func RequestCallback(shopifyManager *manager.ShopifyManager) response.HandlerFun
 			return response.MissingParameter("code")
 		}
 
-		accessTokenURL := fmt.Sprintf("https://%s/admin/oauth/access_token", shop)
+		normalizedShop := shopify.NormalizeDomain(shop)
+		accessTokenURL := fmt.Sprintf("https://%s/admin/oauth/access_token", normalizedShop)
 
 		form := url.Values{}
 		form.Set("client_id", config.Values.Shopify.ClientID)
@@ -71,7 +74,7 @@ func RequestCallback(shopifyManager *manager.ShopifyManager) response.HandlerFun
 		// Create or update the complete shopify integration
 		integration, err := shopifyManager.CreateOrUpdateShopifyIntegration(r.Context(), manager.CreateShopifyIntegrationParams{
 			UserID:      userID,
-			ShopDomain:  shop,
+			ShopDomain:  normalizedShop,
 			AccessToken: tokenResp.AccessToken,
 			Scope:       strings.Join(config.Values.Shopify.Scopes, ","),
 		})
@@ -81,10 +84,22 @@ func RequestCallback(shopifyManager *manager.ShopifyManager) response.HandlerFun
 		}
 
 		// Generate JWT token for the authenticated user
-		jwtToken, err := auth.GenerateJWT(shop, integration.User.ID)
+		jwtToken, err := auth.GenerateJWT(normalizedShop, integration.User.ID)
 		if err != nil {
 			return response.InternalServerError("Failed to generate JWT token", err)
 		}
+
+		// Trigger initial sync (won't run if already synced recently)
+		go func() {
+			_, syncErr := syncManager.TriggerShopifySync(r.Context(), manager.SyncRequest{
+				UserID:     integration.User.ID,
+				ShopDomain: shop,
+				Force:      false, // Respect rate limiting
+			})
+			if syncErr != nil {
+				log.Printf("Failed to trigger initial sync for shop %s: %v", shop, syncErr)
+			}
+		}()
 
 		// Set JWT as an HTTP-only cookie and also return it as JSON
 		http.SetCookie(w, &http.Cookie{
